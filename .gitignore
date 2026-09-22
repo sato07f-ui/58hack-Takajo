@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# archify visual-check documents
+docs/ar-scene-flow.*
