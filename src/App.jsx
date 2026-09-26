@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { ArScene } from './utils/ar/ArScene'
-import { DebugRemote } from './utils/ar/DebugRemote'
+//import { DebugRemote } from './utils/ar/DebugRemote'
 import { useDeviceOrientation } from './utils/ar/useDeviceOrientation'
 
 function App() {
@@ -36,7 +36,7 @@ function App() {
       <ArScene orientationRef={orientationRef} sceneRef={sceneRef} />
       <div className="ui-layer">
         {/* 実機検証用リモコン。本番では外す */}
-        <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} />
+        {/* <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} /> */}
       </div>
     </>
   )

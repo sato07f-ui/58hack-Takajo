@@ -45,6 +45,14 @@ npm i mind-ar
 npm i mind-ar --ignore-scripts
 ```
 
+`--ignore-scripts` は **他のパッケージのインストールスクリプトも全部飛ばす**。このプロジェクトでは `cloudflared` が本体をダウンロードするスクリプトを持っているので、その分だけ後から実行しておく。
+
+```bash
+npm rebuild cloudflared
+```
+
+チームメンバーが `package.json` を pull して入れる場合も同じ（`npm i --ignore-scripts` → `npm rebuild cloudflared`）。
+
 GLTFLoader は `three` に同梱されているので追加インストールは不要（`three/addons/loaders/GLTFLoader.js`）。
 
 ### 1-2. 使う MindAR の API（v1.2.5 で確認）
