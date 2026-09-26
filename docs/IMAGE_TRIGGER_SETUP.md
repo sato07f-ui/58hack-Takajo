@@ -56,12 +56,14 @@ npm rebuild cloudflared
 GLTFLoader は `three` に同梱されているので追加インストールは不要（`three/addons/loaders/GLTFLoader.js`）。
 
 ### 1-2. 使う MindAR の API（v1.2.5 で確認）
-`import { Controller } from 'mind-ar/dist/mindar-image.prod.js'`
+`import { Compiler, Controller } from 'mind-ar/dist/mindar-image.prod.js'`
 
 | API | 役割 |
 |---|---|
 | `new Controller({ inputWidth, inputHeight, onUpdate, maxTrack })` | 認識エンジンを作る。入力サイズは映像の実サイズ |
-| `await controller.addImageTargets(url)` | `.mind` を読み込む。戻り値の `dimensions[i]` が画像 i の `[幅, 高さ]`（px）|
+| `controller.addImageTargetsFromBuffer(buffer)` | `.mind` の中身を読み込む。戻り値の `dimensions[i]` が画像 i の `[幅, 高さ]`（px）。**読めるのは 1 つだけ**（2 回呼ぶと上書き）|
+| `new Compiler()` / `compiler.importData(buffer)` | `.mind` の中身（画像データのリスト）を取り出す |
+| `compiler.data = [...]` → `compiler.exportData()` | 画像データのリストを `.mind` の形式に戻す。複数の `.mind` をつなげるのに使う |
 | `controller.dummyRun(video)` | GPU カーネルの事前ビルド（初回の引っかかり防止）|
 | `controller.processVideo(video)` | 認識ループ開始。毎フレーム `onUpdate` が呼ばれる |
 | `controller.stopProcessVideo()` | 認識ループ停止 |
@@ -79,14 +81,21 @@ MindAR は内部で **5 フレーム連続で追跡できてから** `updateMatr
 
 ---
 
-## 2. `.mind` ファイルを作る
+## 2. `.mind` ファイルを作る（1 画像 1 ファイル）
 
 1. 認識させたい画像を用意する（JPG / PNG）。**模様が細かくコントラストが強い画像ほど認識しやすい**。無地・単色・繰り返し模様は苦手
 2. MindAR の公式コンパイラ（ブラウザで動く）を開く: https://hiukim.github.io/mind-ar-js-doc/tools/compile
-3. 画像を **出したい敵の順番どおりに** アップロードして Start → `targets.mind` をダウンロード
-4. `public/targets/targets.mind` に置く（`/targets/targets.mind` で配信される）
+3. **画像を 1 枚だけ** アップロードして Start → `.mind` をダウンロード
+4. 敵の名前にして `public/targets/` に置く（例: `public/targets/carrot.mind` → `/targets/carrot.mind` で配信される）
+5. `src/utils/enemy/enemies.js` の該当する敵の `targetUrl` にそのパスを書く（5-1）
 
-**アップロード順 = `targetIndex`**（0 始まり）。この番号で敵を引くので、順番をメモしておく。
+画像を足すときは「`.mind` を置く → `enemies.js` に 1 行書く」だけでよい。並び順を気にする必要は無い。
+
+### 複数の `.mind` をどう認識させているか
+MindAR の認識エンジンは `.mind` を **1 つしか読み込めない**。そこでアプリ起動時に、全ての `.mind` をダウンロードして中身（画像データのリスト）を 1 つにつなげ、つなげたものを認識エンジンに渡している（4-1 の `loadAndMergeTargets`）。
+
+- 認識エンジンが返す番号（つなげた後の何枚目か）は、どのファイルから来たかに変換してから返す。なので `enemies.js` の敵と `.mind` がずれることは無い
+- **1 つの `.mind` に画像を 2 枚以上入れないこと**。入れた場合、そのファイルのどの画像を映しても同じ敵が出る
 
 コンパイラ画面に表示される特徴点（赤い点）が少ない画像は認識しにくいので差し替える。
 
@@ -96,8 +105,9 @@ MindAR は内部で **5 フレーム連続で追跡できてから** `updateMatr
 
 ```
 public/
-  targets/
-    targets.mind              ← 新規: 認識させる画像（2 章で作成）
+  targets/                    ← 新規: 認識させる画像（2 章で作成。1 画像 1 ファイル）
+    carrot.mind
+    greenpepper.mind
 src/
   assets/
     carrot.glb                  （既存）
@@ -114,7 +124,7 @@ src/
       useImageTrigger.js        React hook。カメラ準備完了で認識を開始
       videoToScreen.js          映像上の座標 → 画面上の座標（object-fit: cover 補正）
     enemy/                    ← 新規: 敵の定義と読み込み
-      enemies.js                targetIndex → 敵（名前・モデル・表示サイズ）の対応表
+      enemies.js                敵の一覧（名前・モデル・.mind・表示サイズ）
       loadEnemyModel.js         GLTFLoader でモデルを読み込む（キャッシュ付き）
 docs/
   IMAGE_TRIGGER_SETUP.md      ← この手順書
@@ -124,15 +134,17 @@ docs/
 
 ### データの流れ
 ```
+public/targets/*.mind ──(起動時に 1 つにつなげる)──┐
+                                                   ▼
 useCamera ──<video>──┬─→ 画面に表示（z-index 0）
                      └─→ createImageTracker（MindAR Controller）
-                              │ 画像 #i を検出（worldMatrix）
+                              │ i 番目のファイルの画像を検出（worldMatrix）
                               ▼
                          画像中心の映像座標 (videoX, videoY)
                               │ videoToScreen（cover 補正）
                               ▼
                          画面座標 (screenX, screenY)
-                              │ ENEMIES[i]
+                              │ SCAN_TARGETS[i]（.mind がある敵）
                               ▼
                      createScene.spawnEnemy(enemy, screenX, screenY)
                               │ Three.js カメラからのレイ上 2m に glb を配置
@@ -147,7 +159,7 @@ useCamera ──<video>──┬─→ 画面に表示（z-index 0）
 ### 4-1. `src/utils/imageTrigger/createImageTracker.js`
 ```js
 import * as THREE from 'three'
-import { Controller } from 'mind-ar/dist/mindar-image.prod.js'
+import { Compiler, Controller } from 'mind-ar/dist/mindar-image.prod.js'
 
 const _m = new THREE.Matrix4()
 const _p = new THREE.Matrix4()
@@ -155,7 +167,7 @@ const _v = new THREE.Vector3()
 
 /**
  * MindAR の worldMatrix から、画像の中心が映像のどこに映っているか（px）を求める。
- * 画像座標系は「左上原点・単位は画像の px」なので、中心は (幅/2, 高さ/2, 0)。
+ * 画像座標系は「単位は画像の px」なので、中心は (幅/2, 高さ/2, 0)。
  */
 const projectMarkerCenter = (controller, worldMatrix, [markerW, markerH], video) => {
   _m.fromArray(worldMatrix)
@@ -169,17 +181,51 @@ const projectMarkerCenter = (controller, worldMatrix, [markerW, markerH], video)
 }
 
 /**
- * <video> を入力に .mind の画像を探す。
+ * 複数の .mind を読み込み、1 つの .mind データにつなげる。
+ * MindAR の認識エンジンは .mind を 1 つしか読めないため、中身（画像データのリスト）を連結する。
+ * 戻り値: { buffer, fileIndexOf }
+ * fileIndexOf[i]: 連結後の i 番目の画像が、targetUrls の何番目のファイルから来たか
+ */
+const loadAndMergeTargets = async (targetUrls) => {
+  const compiler = new Compiler()
+  const data = []
+  const fileIndexOf = []
+  for (const [fileIndex, url] of targetUrls.entries()) {
+    const res = await fetch(url)
+    // 存在しないパスでも開発サーバーは index.html を 200 で返すので、HTML も失敗扱いにする
+    if (!res.ok || res.headers.get('content-type')?.includes('text/html')) {
+      throw new Error(`${url} が見つかりません（public/ に置いたか確認してください）`)
+    }
+    let list
+    try {
+      list = compiler.importData(await res.arrayBuffer())
+    } catch {
+      throw new Error(`${url} は .mind ファイルとして読み込めませんでした`)
+    }
+    if (list.length === 0) throw new Error(`${url} は MindAR の現在の形式ではありません。コンパイルし直してください`)
+    for (const item of list) {
+      data.push(item)
+      fileIndexOf.push(fileIndex)
+    }
+  }
+  compiler.data = data
+  return { buffer: compiler.exportData(), fileIndexOf }
+}
+
+/**
+ * <video> を入力に、targetUrls の .mind に登録された画像を探す。
  * 見つかったら onDetect({ targetIndex, videoX, videoY }) を 1 回だけ呼び、認識を止める。
+ * targetIndex は「targetUrls の何番目のファイルの画像か」。
  * 戻り値: { start(), stop(), dispose() }
  * video は再生中（videoWidth が確定済み）であること。
  */
-export const createImageTracker = async (video, { targetsUrl, onDetect }) => {
+export const createImageTracker = async (video, { targetUrls, onDetect }) => {
   // MindAR は video の width / height「属性」を入力サイズとして読むので、実サイズを入れておく
   video.setAttribute('width', video.videoWidth)
   video.setAttribute('height', video.videoHeight)
 
   let dimensions = []
+  let fileIndexOf = []
   let scanning = false
 
   const controller = new Controller({
@@ -191,15 +237,21 @@ export const createImageTracker = async (video, { targetsUrl, onDetect }) => {
       scanning = false
       controller.stopProcessVideo() // トリガーとしてだけ使うので、見つけたら止める
       onDetect({
-        targetIndex,
+        targetIndex: fileIndexOf[targetIndex],
         ...projectMarkerCenter(controller, worldMatrix, dimensions[targetIndex], video),
       })
     },
   })
 
-  const result = await controller.addImageTargets(targetsUrl)
-  dimensions = result.dimensions
-  controller.dummyRun(video)
+  try {
+    const merged = await loadAndMergeTargets(targetUrls)
+    fileIndexOf = merged.fileIndexOf
+    dimensions = controller.addImageTargetsFromBuffer(merged.buffer).dimensions
+    controller.dummyRun(video)
+  } catch (e) {
+    controller.dispose()
+    throw e
+  }
 
   return {
     start() {
@@ -253,13 +305,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createImageTracker } from './createImageTracker'
 
 /**
- * enabled が true になったら .mind の画像を探し始める hook。
+ * enabled が true になったら targetUrls の .mind に登録された画像を探し始める hook。
  * 見つかったら onDetect({ targetIndex, videoX, videoY }) を呼んで止まる。
+ * targetIndex は「targetUrls の何番目のファイルの画像か」。
+ * targetUrls は毎レンダーで作り直さないこと（変わると認識をやり直す）。
  * 戻り値: { status, error, rescan }
  * status: 'idle' | 'scanning' | 'detected' | 'error'
  * rescan(): 敵を倒した後などに、もう一度探し始める
  */
-export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => {
+export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect }) => {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const trackerRef = useRef(null)
@@ -277,7 +331,7 @@ export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => 
     const start = async () => {
       try {
         const tracker = await createImageTracker(videoRef.current, {
-          targetsUrl,
+          targetUrls,
           onDetect: (result) => {
             setStatus('detected')
             onDetectRef.current?.(result)
@@ -303,7 +357,7 @@ export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => 
       trackerRef.current?.dispose()
       trackerRef.current = null
     }
-  }, [enabled, targetsUrl, videoRef])
+  }, [enabled, targetUrls, videoRef])
 
   const rescan = useCallback(() => {
     if (!trackerRef.current) return
@@ -322,7 +376,7 @@ export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => 
 ## 5. Step 2: 敵の定義と読み込み
 
 ### 5-1. `src/utils/enemy/enemies.js`
-`.mind` の `targetIndex` と敵を対応させる表。**並び順は 2 章でアップロードした画像の順番と同じにする**。
+敵の一覧。`targetUrl` にその敵を出現させる `.mind` を書く。**並び順は自由**（`.mind` との対応は `targetUrl` で決まる）。`.mind` がまだ無い敵は `targetUrl: null` にしておけば、画像認識の対象から外れる。
 
 ```js
 import carrotUrl from '../../assets/carrot.glb?url'
@@ -330,13 +384,16 @@ import greenpepperUrl from '../../assets/greenpepper.glb?url'
 import spinachUrl from '../../assets/spinach.glb?url'
 
 /**
- * targetIndex（.mind に登録した画像の順番）→ 敵の定義。
+ * 敵の定義。
+ * modelUrl: 3D モデル（glb）
+ * targetUrl: この敵を出現させる画像の .mind（public/targets/ に 1 画像 1 ファイルで置く）。
+ *            null の敵は画像認識では出現しない
  * height: AR 空間で表示する高さ [m]（モデルの実寸に関係なくこの高さに揃える）
  */
 export const ENEMIES = [
-  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, height: 0.6 },          // 画像 0
-  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, height: 0.5 }, // 画像 1
-  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, height: 0.7 },      // 画像 2
+  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.6 },
+  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.5 },
+  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: null, height: 0.7 }, // .mind 未作成
 ]
 ```
 
@@ -475,10 +532,14 @@ import { useImageTrigger } from '../imageTrigger/useImageTrigger'
 import { videoToScreen } from '../imageTrigger/videoToScreen'
 import { ENEMIES } from '../enemy/enemies'
 
-const TARGETS_URL = '/targets/targets.mind'
+// 画像認識で出現する敵（.mind があるもの）と、その .mind の一覧。
+// 認識結果の targetIndex は SCAN_TARGETS の添字になる
+const SCAN_TARGETS = ENEMIES.filter((enemy) => enemy.targetUrl)
+const TARGET_URLS = SCAN_TARGETS.map((enemy) => enemy.targetUrl)
 
 /**
  * props.orientationRef: useDeviceOrientation() の orientationRef
+ * （権限要求は親の「開始」ボタンで済ませてから ArScene をマウントする）
  * props.sceneRef: createScene() の戻り値を親に渡すための ref（任意）
  * props.onEnemySpawn(enemy): 敵が出現したときに呼ばれる（任意。ゲームロジックへの通知用）
  */
@@ -503,11 +564,11 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
     }
   }, [orientationRef, sceneRef])
 
-  const { status: scanStatus } = useImageTrigger(videoRef, {
+  const { status: scanStatus, error: scanError } = useImageTrigger(videoRef, {
     enabled: status === 'ready', // カメラ映像が流れ始めてから認識を開始
-    targetsUrl: TARGETS_URL,
+    targetUrls: TARGET_URLS,
     async onDetect({ targetIndex, videoX, videoY }) {
-      const enemy = ENEMIES[targetIndex]
+      const enemy = SCAN_TARGETS[targetIndex]
       if (!enemy) return
       const { x, y } = videoToScreen(videoRef.current, videoX, videoY)
       await localSceneRef.current?.spawnEnemy(enemy, x, y)
@@ -523,11 +584,13 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
       {status === 'ready' && scanStatus === 'scanning' && (
         <p className="ar-message">食材の画像にカメラを向けてください</p>
       )}
+      {scanStatus === 'error' && <p className="ar-message">画像認識を開始できませんでした: {scanError}</p>}
     </>
   )
 }
 ```
 
+- `SCAN_TARGETS` / `TARGET_URLS` をコンポーネントの外で作るのは、毎レンダーで配列が作り直されると `useImageTrigger` が認識をやり直してしまうため
 - `enabled: status === 'ready'` にするのは、`useCamera` の `video.play()` が終わるまで `videoWidth` が 0 のため
 - 敵を倒した後に次の敵を探すときは、`useImageTrigger` の `rescan()` を呼ぶ（ゲームロジック側に渡す）
 
@@ -539,7 +602,7 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
 |---|---|---|
 | 開始後「食材の画像にカメラを向けてください」が出る | ☐ | ☐ |
 | 登録画像にカメラを向けると 1 秒以内に敵が出る | ☐ | ☐ |
-| 画像ごとに正しい敵（`ENEMIES` の順番どおり）が出る | ☐ | ☐ |
+| 画像ごとに正しい敵（`enemies.js` の `targetUrl` どおり）が出る | ☐ | ☐ |
 | 画面の端に画像を映したとき、敵もその方向に出る | ☐ | ☐ |
 | 敵の顔がカメラの方を向いている・傾いていない | ☐ | ☐ |
 | 出現後に端末を回すと、敵が空間に固定されて見える | ☐ | ☐ |
@@ -556,10 +619,11 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
 |---|---|
 | `npm i mind-ar` が `canvas` のビルドで失敗する | `npm i mind-ar --ignore-scripts` で入れる（ブラウザ用 `dist/` は `canvas` を使わない）|
 | 何を映しても検出されない（エラーも出ない） | `video.setAttribute('width' / 'height')` が抜けている。または `enabled` が早すぎて `videoWidth` が 0 のまま `createImageTracker` を呼んでいる |
-| `.mind` の読み込みで 404 | `public/targets/targets.mind` に置いたか、`TARGETS_URL` が `/targets/targets.mind` か確認 |
+| 「`/targets/xxx.mind` が見つかりません」と出る | `public/targets/` に置いたか、`enemies.js` の `targetUrl` のファイル名と一致しているか確認 |
+| 「.mind ファイルとして読み込めませんでした」「現在の形式ではありません」と出る | 壊れている、または古い MindAR で作った `.mind`。公式コンパイラで作り直す |
 | `.glb` の import でビルドエラー | `?url` を付け忘れている（`import url from '...glb?url'`）|
 | 検出まで時間がかかる・検出しない画像がある | 特徴点が少ない画像。模様が細かくコントラストの強い画像に替える。画面の 1/3 以上に大きく映す。反射・暗すぎる照明も苦手 |
-| 違う画像の敵が出る | `ENEMIES` の並び順と `.mind` へのアップロード順がずれている |
+| 違う画像の敵が出る | `enemies.js` の `targetUrl` の書き間違い。または 1 つの `.mind` に画像を 2 枚以上入れている（1 画像 1 ファイルにする）|
 | 敵が画像と違う方向に出る | `videoToScreen` を通していない、または `.ar-video` の `object-fit: cover` を変えた |
 | 敵が横向き・後ろ向き・倒れている | モデルの向きが 5-3 の前提と違う。`lookAt` の後に `model.rotateY(Math.PI)` などで補正する |
 | 敵が大きすぎる・小さすぎる | `ENEMIES[i].height` と `SPAWN_DISTANCE` を調整する |
@@ -571,7 +635,7 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
 
 ## 10. 補足: 読み込みサイズ
 - `mind-ar` の認識エンジン（TensorFlow.js 同梱）で **約 2MB** 増える
-- `.mind` は画像 1 枚あたり数百 KB
+- `.mind` は画像 1 枚あたり数百 KB。**全部の `.mind` を起動時にダウンロードする**ので、画像を増やすほど認識開始までが遅くなる
 - `.glb` は 1 体 0.5〜0.8MB（顔テクスチャ込み）
 
 初回表示が重い場合は、`ArScene.jsx` の `import` を `React.lazy` で遅延読み込みにし、開始画面を先に出す。
