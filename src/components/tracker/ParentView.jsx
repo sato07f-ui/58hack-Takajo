@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useGeolocation } from '../../utils/tracker/useGeolocation'
 import { useLocationChannel } from '../../utils/tracker/useLocationChannel'
 import { useReviveSender } from '../../utils/tracker/useReviveSender'
+import { useBossSummonSender } from '../../utils/tracker/useBossSummon'
 import { isValidRoomCode, normalizeRoomCode } from '../../utils/tracker/roomCode'
 import { REVIVE_DISTANCE_M } from '../../utils/tracker/escapeRules'
 import { DistanceDisplay } from './DistanceDisplay'
@@ -19,6 +20,7 @@ export function ParentView({ onBack }) {
   const channel = useLocationChannel({ roomCode, role: 'parent' })
   const { status, sendLocation } = channel
   const revive = useReviveSender({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
+  const boss = useBossSummonSender({ channel, roomCode })
 
   // 自分の位置が更新されたら子供に送る
   useEffect(() => {
@@ -79,6 +81,16 @@ export function ParentView({ onBack }) {
         </div>
       )}
       <DistanceDisplay me={geo.position} peer={channel.peerLocation} />
+      <button
+        type="button"
+        className="boss-summon-button"
+        onClick={boss.summon}
+        disabled={boss.bossState !== 'idle' || status !== 'connected'}
+      >
+        {boss.bossState === 'idle' && 'ラスボスを呼ぶ'}
+        {boss.bossState === 'summoning' && '呼び出し中…'}
+        {boss.bossState === 'arrived' && 'ラスボスが出現した！'}
+      </button>
       <p className="tracker-note">子供の状態: {revive.childState === 'escaped' ? '脱出中' : 'ダンジョン内'}</p>
       <ConnectionStatus {...channel} peerLabel="子供" />
       <LocationPermissionHint permission={geo.permission} error={geo.error} />

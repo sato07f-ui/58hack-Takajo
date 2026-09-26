@@ -354,6 +354,23 @@ code {
   100% { opacity: 0; }
 }
 
+/* 親画面: ラスボスを呼ぶボタン */
+.tracker-screen .boss-summon-button {
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(#7c1d6f, #4a0e43);
+  border: 2px solid #c084fc;
+}
+.tracker-screen .boss-summon-button:disabled {
+  opacity: 0.6;
+}
+
+/* 子供画面: ダンジョンに入る前にラスボスが呼ばれた */
+.boss-summoned-note {
+  color: #e9d5ff;
+  font-weight: 700;
+}
+
 /* 親画面: 子供が脱出中の警告 */
 .child-escaped-banner {
   padding: 14px 16px;

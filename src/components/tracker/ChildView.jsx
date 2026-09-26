@@ -4,12 +4,14 @@ import { useGeolocation } from '../../utils/tracker/useGeolocation'
 import { useLocationChannel } from '../../utils/tracker/useLocationChannel'
 import { useEscapeState } from '../../utils/tracker/useEscapeState'
 import { useWakeLock } from '../../utils/tracker/useWakeLock'
+import { useBossSummonReceiver } from '../../utils/tracker/useBossSummon'
 import { isValidRoomCode, normalizeRoomCode } from '../../utils/tracker/roomCode'
 import { distanceLevel, formatDistance } from '../../utils/tracker/distanceLevel'
 import { DistanceDisplay } from './DistanceDisplay'
 import { ConnectionStatus } from './ConnectionStatus'
 import { LocationPermissionHint } from './LocationPermissionHint'
 import { EscapedScreen, RevivedBanner } from './EscapedScreen'
+import { BossGate } from '../boss/BossGate'
 
 /**
  * 子供の画面。親の横でコードを入力して接続し、以後はコードを表示しない。
@@ -27,6 +29,14 @@ export function ChildView({ onBack, ar }) {
   const { status, sendLocation } = channel
   const escape = useEscapeState({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
   const wakeLock = useWakeLock()
+  const boss = useBossSummonReceiver({ channel, roomCode })
+  const [gateOpened, setGateOpened] = useState(false) // 門が開ききった（ラスボスを出す）
+  const [gateDone, setGateDone] = useState(false) // 門の演出が終わった
+  // ラスボスの段階。ダンジョンに入る前に呼ばれた場合は、入った瞬間に門の演出を始める
+  const bossPhase = !boss.summoned || !inDungeon ? 'none' : gateOpened ? 'appear' : 'gate'
+
+  /** ラスボスが出現した（ここからラスボス戦。戦闘の処理はここにつなぐ） */
+  function handleBossAppear() {}
 
   // 自分の位置が更新されたら親に送る
   useEffect(() => {
@@ -87,11 +97,14 @@ export function ChildView({ onBack, ar }) {
     const level = distanceLevel(escape.distance)
     return (
       <>
-        <ArScene orientationRef={ar.orientationRef} />
+        <ArScene orientationRef={ar.orientationRef} bossPhase={bossPhase} onBossAppear={handleBossAppear} />
         <div className="ui-layer">
           <div className={`distance-hud distance-${level}`}>親まで {formatDistance(escape.distance)}</div>
           {escape.state === 'escaped' && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
           {escape.justRevived && <RevivedBanner />}
+          {bossPhase !== 'none' && !gateDone && (
+            <BossGate onOpened={() => setGateOpened(true)} onDone={() => setGateDone(true)} />
+          )}
         </div>
       </>
     )
@@ -102,6 +115,7 @@ export function ChildView({ onBack, ar }) {
       <h1>親との距離</h1>
       <DistanceDisplay me={geo.position} peer={channel.peerLocation} />
       <ConnectionStatus {...channel} peerLabel="親" />
+      {boss.summoned && <p className="boss-summoned-note">ラスボスがダンジョンで待っている！</p>}
       <LocationPermissionHint permission={geo.permission} error={geo.error} />
       <button type="button" onClick={handleEnterDungeon} disabled={status !== 'connected'}>
         ダンジョンへ入る
