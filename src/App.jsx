@@ -59,6 +59,7 @@ function App() {
 
     const nextHp = Math.max(enemyHp - ATTACK_DAMAGE, 0)
     setEnemyHp(nextHp)
+    sceneRef.current?.setEnemyHpRatio(nextHp / ENEMY_MAX_HP) // 敵の頭上の HP ゲージに反映する
     setIsCooldown(true)
 
     // フィードバック演出：HP が 0 なら撃破（消滅＋アイテムドロップ）、残っていればダメージ（発光・変形・エフェクト）
@@ -106,14 +107,6 @@ function App() {
       <div className="ui-layer">
         {/* 実機検証用リモコン。本番では外す */}
         {/* <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} /> */}
-
-        {enemy && (
-          <div className="battle-status">
-            <p>
-              {enemy.name}のHP: {enemyHp}
-            </p>
-          </div>
-        )}
 
         <div className="inventory">
           <p className="inventory-title">手持ち</p>
