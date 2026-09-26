@@ -1,12 +1,26 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden; /* 余計なスクロールを防ぐ */
+}
+
 /* 魔法ボタン関連 */
 .ui-layer {
   position: fixed; /* ★ 画面の枠(ブラウザ)を基準に固定する */
-  bottom: 10dvh; /* ★ 下から10dvhの位置に配置 */
+  top: 0; /* ★ 修正: topを0にして画面全体を覆う */
   left: 0; /* ★ 左端からスタートさせる（中央揃えの準備） */
   width: 100%;
+  height: 100dvh; /* ★ 追加: 高さを画面いっぱいにする */
   display: flex;
-  justify-content: center; /* ★ その幅の中でボタンを中央に配置する */
-  align-items: center; /* ★追加: ボタンが縦に引っ張られるのを防ぐ */
+  flex-direction: column; /* ★ 追加: 縦方向に並べる設定 */
+  justify-content: flex-end; /* ★ その幅の中でボタンを一番下に配置する */
+  align-items: center; /* ★ 追加: 横方向は中央揃え */
+  padding-bottom: 10dvh; /* ★ 追加: 下から10dvh分の余白(パディング)を取る */
+  box-sizing: border-box; /* paddingを含めて高さを計算させる */
   z-index: 10;
   pointer-events: none;
 }
