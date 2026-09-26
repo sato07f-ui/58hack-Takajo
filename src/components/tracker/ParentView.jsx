@@ -47,7 +47,7 @@ export function ParentView({ onBack }) {
           className="tracker-input"
           value={input}
           onChange={(e) => setInput(e.target.value.toUpperCase())}
-          placeholder="例: TAKAJO1"
+          placeholder="例: HANAKO7"
           autoCapitalize="characters"
           autoComplete="off"
           maxLength={12}
