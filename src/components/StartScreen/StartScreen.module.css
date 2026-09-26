@@ -81,56 +81,6 @@
   }
 }
 
-/* モーダルエリア */
-.modalOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 100;
-}
-.modalContent {
-  background: #fff;
-  padding: 2rem;
-  border-radius: 1.5rem;
-  border: 3px solid #333;
-  width: 80%;
-  max-width: 320px;
-  text-align: center;
-}
-.modalTitle {
-  margin-top: 0;
-  border-bottom: 2px solid #eee;
-  padding-bottom: 1rem;
-}
-.instructionList p {
-  font-size: 1.2rem;
-  font-weight: bold;
-  margin: 1rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.emoji {
-  font-size: 1.5rem;
-}
-.closeButton {
-  margin-top: 1.5rem;
-  padding: 0.8rem 2rem;
-  font-size: 1.2rem;
-  font-weight: bold;
-  background: #333;
-  color: #fff;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-}
-
 /* 見守りモードへのボタン（TAP TO START の下に控えめに出す） */
 .trackerButton {
   margin-top: 1rem;
@@ -144,10 +94,14 @@
   cursor: pointer;
 }
 
-/* あそびかたの中に出すお知らせ（センサー権限が拒否されたときなど） */
+/* TAP TO START の下に出すお知らせ（センサー権限が拒否されたときなど） */
 .notice {
-  margin: 1rem 0 0;
+  margin: 1rem auto 0;
+  max-width: 320px;
+  padding: 0.6rem 1rem;
   font-size: 0.9rem;
-  color: #c62828;
+  color: #fff;
   text-align: left;
+  background: rgba(198, 40, 40, 0.85);
+  border-radius: 0.5rem;
 }
