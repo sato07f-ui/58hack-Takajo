@@ -13,11 +13,12 @@ import { ConnectionStatus } from './ConnectionStatus'
 import { LocationPermissionHint } from './LocationPermissionHint'
 import { EscapedScreen, RevivedBanner } from './EscapedScreen'
 import { BattleHud } from '../battle/BattleHud'
+import { DungeonEntrance } from '../dungeon/DungeonEntrance'
 
 /**
  * 子供の画面。親の横でコードを入力して接続し、以後はコードを表示しない。
  * 接続後に「ダンジョンへ入る」で AR バトルを開き、離れすぎると脱出状態のオーバーレイを重ねる（脱出中は攻撃できない）。
- * ゲームはこの画面からしか始められない。
+ * ゲームはこの画面からしか始められない。入るときは、カメラと認識モデルの準備が終わるまで扉の演出（DungeonEntrance）を重ねる。
  * 開発用コード（VITE_DEV_ROOM_CODE、dev のみ）を入力したときは親とつながずにプレイでき、脱出も起きない。
  * props.onBack()
  * props.ar: { orientationRef, requestPermission }（App の useDeviceOrientation）
@@ -26,6 +27,8 @@ export function ChildView({ onBack, ar }) {
   const [input, setInput] = useState('')
   const [roomCode, setRoomCode] = useState('')
   const [inDungeon, setInDungeon] = useState(false)
+  const [entering, setEntering] = useState(false) // 扉の演出中
+  const [arReady, setArReady] = useState(false) // ArScene の準備（モデルのダウンロード含む）が終わった
   const [sensorDenied, setSensorDenied] = useState(false)
   const devMode = isDevRoomCode(roomCode)
   const geo = useGeolocation()
@@ -60,6 +63,8 @@ export function ChildView({ onBack, ar }) {
       return
     }
     setSensorDenied(false)
+    setArReady(false)
+    setEntering(true) // 準備の間は扉の演出を見せる
     setInDungeon(true) // 'unsupported'（PC ブラウザ等）はカメラ確認のため進める
   }
 
@@ -103,6 +108,7 @@ export function ChildView({ onBack, ar }) {
           sceneRef={battle.sceneRef}
           onEnemySpawn={battle.handleEnemySpawn}
           onItemCollect={battle.handleItemCollect}
+          onReady={() => setArReady(true)}
         />
         <div className="ui-layer">
           <BattleHud battle={battle} disabled={escaped} />
@@ -112,6 +118,7 @@ export function ChildView({ onBack, ar }) {
           {escaped && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
           {escape.justRevived && <RevivedBanner />}
         </div>
+        {entering && <DungeonEntrance ready={arReady} onDone={() => setEntering(false)} />}
       </>
     )
   }

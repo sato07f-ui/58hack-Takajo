@@ -22,8 +22,10 @@ const BANANA = ENEMIES.find((enemy) => enemy.id === 'banana')
  *   画像認識の敵（にんじん等）も物体認識の敵（バナナ）も、同じようにここへ通知される
  * props.onItemCollect(item): 倒した敵が落としたアイテムがプレイヤーの手元に届いたときに呼ばれる（任意。手持ちに入れる用）。
  *   拾った後は次の敵を探し始める
+ * props.onReady(): カメラ・画像認識・物体認識の準備（モデルのダウンロードを含む）が終わったときに 1 回呼ばれる（任意）。
+ *   カメラが使えなかったときも、エラーを見せるために呼ぶ
  */
-export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect }) {
+export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect, onReady }) {
   const { videoRef, status, error } = useCamera(true)
   const canvasRef = useRef(null)
   const localSceneRef = useRef(null) // 親が sceneRef を渡さなくても内部で使う
@@ -31,6 +33,7 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect 
   const foundRef = useRef(false)
   // createScene は最初に 1 回だけ作るので、アイテムを拾ったときの処理は ref 経由で最新のものを呼ぶ
   const itemCollectRef = useRef(null)
+  const onReadyRef = useRef(onReady)
 
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
@@ -98,7 +101,16 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect 
 
   useEffect(() => {
     itemCollectRef.current = handleItemCollect
+    onReadyRef.current = onReady
   })
+
+  // 画像認識は準備中 'idle'、物体認識は準備中 'idle' / 'loading'。どちらも抜けたら準備完了
+  const ready =
+    status === 'error' ||
+    (status === 'ready' && scanStatus !== 'idle' && objectStatus !== 'idle' && objectStatus !== 'loading')
+  useEffect(() => {
+    if (ready) onReadyRef.current?.()
+  }, [ready])
 
   return (
     <>
