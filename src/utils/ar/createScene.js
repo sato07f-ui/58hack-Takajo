@@ -17,11 +17,17 @@ const PROJECTILE_HIT_DISTANCE = 0.15 // 魔法弾がこの距離 [m] まで近�
 const PROJECTILE_LERP = 0.15 // 魔法弾が毎フレーム敵へ寄る割合
 const DROP_FLOAT_Y = 0.15 // ドロップを敵の足元から浮かせる高さ [m]
 const DROP_SPIN = 0.02 // ドロップの毎フレームの回転量 [rad]
+const DROP_IDLE_MS = 800 // ドロップが足元で回って見えている時間。過ぎるとプレイヤーへ吸い寄せられる
+const DROP_ATTRACT_LERP = 0.12 // 吸い寄せ中に毎フレーム手元へ寄る割合（魔法弾より少し遅い）
+const DROP_ATTRACT_SHRINK = 0.93 // 吸い寄せ中に毎フレーム縮む倍率
+const DROP_COLLECT_DISTANCE = 0.05 // 手元からこの距離 [m] まで来たら回収完了
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
 const _size = new THREE.Vector3()
 const _center = new THREE.Vector3()
+const _collectPoint = new THREE.Vector3(0, -0.15, -0.3) // ドロップの吸い寄せ先（カメラローカル：画面中央やや下、30cm 手前）
+const _target = new THREE.Vector3() // 吸い寄せ先のワールド座標（毎フレーム計算）
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
 
@@ -41,9 +47,10 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
  * onFrame(camera): 毎フレーム描画前に呼ばれる（向き追従などに使う）
  * onDefeat(enemy, item): 撃破演出が終わり敵が消えたときに呼ばれる。
  *   item はその敵のドロップ（ITEMS の要素）。何も落とさない敵なら null
+ * onCollect(item): ドロップがプレイヤーの手元に届いて消えたときに呼ばれる。item は ITEMS の要素
  * 戻り値の dispose() を呼ぶと全て停止・破棄する。
  */
-export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
+export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true, //背景を透明にしてカメラ映像を透かす
@@ -145,8 +152,20 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
   }
 
   /**
+   * ドロップを回収する：消して onCollect(item) を呼ぶ。いなければ何もしない。
+   * clearEnemy() 経由の片付けとは違い、こちらは「手に入れた」扱い
+   */
+  const collectDrop = () => {
+    if (!dropModel) return
+    const item = dropModel.userData.item
+    clearDrop()
+    if (running && item) onCollect?.(item)
+  }
+
+  /**
    * ドロップアイテムを position（敵の足元）の少し上に出す。
-   * item: ITEMS の要素。既にドロップが出ていれば入れ替える
+   * item: ITEMS の要素。既にドロップが出ていれば入れ替える。
+   * 出た直後は 'idle'（その場で回転）、DROP_IDLE_MS 後に 'attract'（手元へ吸い寄せ）に移る
    */
   const spawnDrop = async (item, position) => {
     const model = await loadModel(item.modelUrl)
@@ -158,6 +177,8 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
     model.position.copy(position)
     model.position.y += DROP_FLOAT_Y - _box.min.y
     model.userData.item = item
+    model.userData.state = 'idle'
+    model.userData.spawnedAt = performance.now()
 
     clearDrop()
     scene.add(model)
@@ -301,8 +322,22 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
     // 3. hitEffect.js のリング・粒子を進める
     updateHitEffects()
 
-    // 4. ドロップを回して「拾えるもの」に見せる
-    if (dropModel) dropModel.rotation.y += DROP_SPIN
+    // 4. ドロップの演出：しばらく足元で回り、その後プレイヤーの手元へ吸い寄せられて消える
+    if (dropModel) {
+      const data = dropModel.userData
+      if (data.state === 'idle') {
+        dropModel.rotation.y += DROP_SPIN
+        if (performance.now() - data.spawnedAt >= DROP_IDLE_MS) data.state = 'attract'
+      } else if (data.state === 'attract') {
+        // 吸い寄せ先はカメラ基準なので、端末を動かしても手元に追従する
+        camera.localToWorld(_target.copy(_collectPoint))
+        dropModel.position.lerp(_target, DROP_ATTRACT_LERP)
+        dropModel.scale.multiplyScalar(DROP_ATTRACT_SHRINK)
+        dropModel.rotation.y += DROP_SPIN * 3 // 速く回して勢いを出す
+        const smallEnough = dropModel.scale.x < (data.baseScale ?? 1) * 0.05
+        if (smallEnough || dropModel.position.distanceTo(_target) < DROP_COLLECT_DISTANCE) collectDrop()
+      }
+    }
 
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
@@ -317,6 +352,7 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
     clearEnemy,
     spawnDrop,
     clearDrop,
+    collectDrop,
     playDamageEffect,
     shootMagic,
     playDefeatEffect,
