@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { ArScene } from './utils/ar/ArScene'
+import { DebugRemote } from './utils/ar/DebugRemote'
 import { useDeviceOrientation } from './utils/ar/useDeviceOrientation'
 
 function App() {
   const [started, setStarted] = useState(false)
   const { orientationRef, permission, requestPermission } = useDeviceOrientation()
+  const sceneRef = useRef(null)
 
   // タップハンドラ内でセンサー権限を要求する（iOS の制約）
   async function handleStart() {
@@ -31,8 +33,11 @@ function App() {
 
   return (
     <>
-      <ArScene orientationRef={orientationRef} />
-      <div className="ui-layer">{/* 後でここに魔法ボタンを置く */}</div>
+      <ArScene orientationRef={orientationRef} sceneRef={sceneRef} />
+      <div className="ui-layer">
+        {/* 実機検証用リモコン。本番では外す */}
+        <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} />
+      </div>
     </>
   )
 }
