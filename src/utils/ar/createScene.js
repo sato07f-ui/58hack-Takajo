@@ -7,7 +7,7 @@ const _q0 = new THREE.Quaternion()
 const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸 -90° 補正
 const DEG = Math.PI / 180
 
-const SPAWN_DISTANCE = 2 // カメラから敵までの距離 [m]
+const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
@@ -42,7 +42,16 @@ export const createScene = (canvas, { onFrame } = {}) => {
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100)
   camera.position.set(0, 0, 0) //カメラの座標を原点固定（後で変更可能）
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2))
+
+  // 照明: 全体を底上げする環境光 + 空/地面の色味 + カメラ側から当てる光
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8))
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.2))
+  // カメラの子にして、端末をどちらに向けても敵の正面（プレイヤー側）が明るくなるようにする
+  const frontLight = new THREE.DirectionalLight(0xffffff, 1.6)
+  frontLight.position.set(0.5, 1, 0) // カメラから見て右上
+  frontLight.target.position.set(0, 0, -1) // カメラの正面方向を照らす
+  camera.add(frontLight, frontLight.target)
+  scene.add(camera) // カメラの子の光を描画に含めるため
 
   const enemies = []
 

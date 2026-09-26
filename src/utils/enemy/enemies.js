@@ -10,7 +10,7 @@ import spinachUrl from '../../assets/spinach.glb?url'
  * height: AR 空間で表示する高さ [m]（モデルの実寸に関係なくこの高さに揃える）
  */
 export const ENEMIES = [
-  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.6 },
-  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.5 },
-  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: null, height: 0.7 }, // .mind 未作成
+  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3 },
+  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.25 },
+  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: '/targets/spinach.mind', height: 0.35 }, // .mind 未作成
 ]
