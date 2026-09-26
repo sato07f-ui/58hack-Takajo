@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { createHitEffect, updateHitEffects } from "./hitEffect";
+// ★ 追加: itemDrop.js から関数をインポート
+import { spawnItem, updateItems, clearItems } from "./itemDrop";
 
 const _zee = new THREE.Vector3(0, 0, 1);
 const _euler = new THREE.Euler();
@@ -65,6 +67,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
   // ===============================
   let projectiles = []; // 飛翔中の魔法弾
   let isDefeated = false; // 撃破状態フラグ
+  let itemSpawned = false; // ★追加: 二重スポーン防止フラグ
 
   // ===============================
   // ★ 変更: ダメージ演出（エフェクト呼び出し追加）
@@ -151,6 +154,12 @@ export const createScene = (canvas, { onFrame } = {}) => {
         testCube.scale.multiplyScalar(0.9);
       } else {
         testCube.visible = false;
+
+        // ★追加: 敵が消えきった瞬間にアイテムを生成
+        if (!itemSpawned) {
+          spawnItem(scene, testCube.position);
+          itemSpawned = true;
+        }
       }
     }
 
@@ -173,6 +182,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
 
     // 3. hitEffect.js のエフェクトアニメーションを更新
     updateHitEffects();
+    updateItems(); // ★追加: アイテムの浮遊・回転アニメーション更新
 
     renderer.render(scene, camera);
     rafId = requestAnimationFrame(loop);
@@ -194,6 +204,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
       window.removeEventListener("resize", resize);
       testCube.geometry.dispose();
       testCube.material.dispose();
+      clearItems(); // ★追加: アイテムのメモリ解放
       renderer.dispose();
     },
   };

@@ -24,17 +24,29 @@ function App() {
 
     // MPを10減らし、敵のHPを20減らす
     setMp((prev) => prev - 10);
-    setEnemyHp((prev) => Math.max(prev - 20, 0)); // 0以下にならないようにMath.maxを使用
+
+    // 計算後のHPを変数に保持して判定に使う
+    const nextHp = Math.max(enemyHp - 20, 0);
+    setEnemyHp(nextHp);
 
     // クールダウン開始
     setIsCooldown(true);
 
     // ===============================
-    // ★追加：ヒット時のフィードバック演出
+    // ★ ヒット時・撃破時のフィードバック演出
     // ===============================
-    // 1. 3Dのキューブを赤く光らせる命令を出す
-    if (sceneRef.current && sceneRef.current.playDamageEffect) {
-      sceneRef.current.playDamageEffect();
+    if (sceneRef.current) {
+      if (nextHp === 0) {
+        // ★ HPが0になったら「撃破演出（消滅＋アイテムドロップ）」を呼ぶ
+        if (sceneRef.current.playDefeatEffect) {
+          sceneRef.current.playDefeatEffect();
+        }
+      } else {
+        // ★ まだHPが残っていれば「ダメージ演出（フラッシュ＋変形＋エフェクト）」を呼ぶ
+        if (sceneRef.current.playDamageEffect) {
+          sceneRef.current.playDamageEffect();
+        }
+      }
     }
 
     // 2. スマホを「ブルッ」と振動させる（100ミリ秒）
