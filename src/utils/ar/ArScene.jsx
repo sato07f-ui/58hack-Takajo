@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
-import { useCamera } from './useCamera'
-import { createScene, applyDeviceOrientation } from './createScene'
+import { useEffect, useRef } from "react";
+import { useCamera } from "./useCamera";
+import { createScene, applyDeviceOrientation } from "./createScene";
 
 /**
  * props.orientationRef: useDeviceOrientation() の orientationRef
@@ -8,28 +8,30 @@ import { createScene, applyDeviceOrientation } from './createScene'
  * props.sceneRef: createScene() の戻り値を親に渡すための ref（任意）
  */
 export function ArScene({ orientationRef, sceneRef }) {
-  const { videoRef, status, error } = useCamera(true)
-  const canvasRef = useRef(null)
+  const { videoRef, status, error } = useCamera(true);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
       onFrame(camera) {
-        const angle = screen.orientation?.angle ?? window.orientation ?? 0
-        applyDeviceOrientation(camera, orientationRef.current, angle)
+        if (orientationRef.current) {
+          const angle = screen.orientation?.angle ?? window.orientation ?? 0;
+          applyDeviceOrientation(camera, orientationRef.current, angle);
+        }
       },
-    })
-    if (sceneRef) sceneRef.current = scene
+    });
+    if (sceneRef) sceneRef.current = scene;
     return () => {
-      scene.dispose()
-      if (sceneRef) sceneRef.current = null
-    }
-  }, [orientationRef, sceneRef])
+      scene.dispose();
+      if (sceneRef) sceneRef.current = null;
+    };
+  }, [orientationRef, sceneRef]);
 
   return (
     <>
       <video ref={videoRef} autoPlay playsInline muted className="ar-video" />
       <canvas ref={canvasRef} className="ar-canvas" />
-      {status === 'error' && <p className="ar-message">{error}</p>}
+      {status === "error" && <p className="ar-message">{error}</p>}
     </>
-  )
+  );
 }
