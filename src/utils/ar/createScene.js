@@ -29,11 +29,10 @@ export function applyDeviceOrientation(
 export const createScene = (canvas, { onFrame } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    alpha: false, // ★ 修正: PCでテストしやすいように、背景を不透明の暗いグレーにする
+    alpha: true,
     antialias: true,
   });
-  // ★ 修正: 第一引数をグレー(0x222222)、第二引数(透明度)を 1 にする
-  renderer.setClearColor(0x222222, 1);
+  renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); //GPU 負荷対策
 
   const scene = new THREE.Scene();
