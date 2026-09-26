@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { spawnItem, updateItems, clearItems } from './itemDrop'
@@ -10,6 +11,8 @@ const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸
 const DEG = Math.PI / 180
 
 const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
+const FACE_TILT = 1.0 // 敵をカメラの方へ傾ける割合（0: まっすぐ立つ, 1: 顔がカメラを真正面に見る）
+const MAX_FACE_TILT_DEG = 60 // 傾ける角度の上限（真上・真下から見たときに倒れすぎないように）
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
 const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
 const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
@@ -21,6 +24,8 @@ const _center = new THREE.Vector3()
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
 const _hitPos = new THREE.Vector3()
+const _toCamera = new THREE.Vector3()
+const _up = new THREE.Vector3()
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
@@ -61,6 +66,11 @@ export const createScene = (canvas, { onFrame } = {}) => {
   camera.add(frontLight, frontLight.target)
   scene.add(camera) // カメラの子の光を描画に含めるため
 
+  // 金属の映り込み用の環境（部屋の照明を模したもの）。enemy.envMapIntensity を持つ敵にだけ当てる
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  pmrem.dispose()
+
   const enemies = [] // 出ている敵のモデル
   const projectiles = [] // 飛翔中の魔法弾 { mesh, target, onHit }
   let rafId = 0
@@ -70,7 +80,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
   let isDefeated = false // 撃破演出中（縮んで消える途中）か
 
   /**
-   * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
+   * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE（enemy.spawnDistance があればその距離）先に敵を出す。
    * enemy: ENEMIES の要素
    */
   const spawnEnemy = async (enemy, screenX, screenY) => {
@@ -78,14 +88,22 @@ export const createScene = (canvas, { onFrame } = {}) => {
     _ndc.set((screenX / window.innerWidth) * 2 - 1, -(screenY / window.innerHeight) * 2 + 1)
     camera.updateMatrixWorld()
     _raycaster.setFromCamera(_ndc, camera)
-    const center = _raycaster.ray.at(SPAWN_DISTANCE, new THREE.Vector3())
+    const center = _raycaster.ray.at(enemy.spawnDistance ?? SPAWN_DISTANCE, new THREE.Vector3())
+    // spawnLift [m] だけ真上に持ち上げる。カメラより高い位置に出た敵は、下の傾け処理でこちらを見下ろす姿勢になる
+    center.y += enemy.spawnLift ?? 0
 
     const model = await loadEnemyModel(enemy.modelUrl)
     if (!running) return null // 読み込み中に dispose された
 
     // clone() はマテリアルを共有するので、この個体だけ色を変えられるよう複製する
     model.traverse((obj) => {
-      if (obj.material) obj.material = obj.material.clone()
+      if (!obj.material) return
+      obj.material = obj.material.clone()
+      // 暗くなりやすい敵（黒い体・金属の金）は、映り込みの環境を当てて明るく見せる
+      if (enemy.envMapIntensity) {
+        obj.material.envMap = envMap
+        obj.material.envMapIntensity = enemy.envMapIntensity
+      }
     })
 
     // 表示サイズを enemy.height [m] に揃える
@@ -93,10 +111,19 @@ export const createScene = (canvas, { onFrame } = {}) => {
     model.scale.setScalar(enemy.height / _size.y)
     model.userData.baseScale = model.scale.x // ダメージ演出で戻すときの基準
 
-    // 原点が足元なので、モデルの中心がレイ上の点に来るよう半分下げる
-    model.position.set(center.x, center.y - enemy.height / 2, center.z)
-    // 顔（+Z）をカメラに向ける。水平方向だけ回して傾かないようにする
-    model.lookAt(camera.position.x, model.position.y, camera.position.z)
+    // 顔（+Z）をカメラに向ける。まず水平方向に向け、次にカメラを見上げる（見下ろす）角度だけ体を後ろ（前）に傾ける。
+    // 傾けないと、カメラより低い位置に出た敵を上から見下ろす形になり、うつむいて見える
+    model.position.copy(center)
+    model.lookAt(camera.position.x, center.y, camera.position.z)
+    _toCamera.subVectors(camera.position, center)
+    const pitch = Math.atan2(_toCamera.y, Math.hypot(_toCamera.x, _toCamera.z)) // カメラが上にあると正
+    const maxTilt = MAX_FACE_TILT_DEG * DEG
+    model.rotateX(-THREE.MathUtils.clamp(pitch * FACE_TILT, -maxTilt, maxTilt))
+
+    // 原点が足元なので、体の中心がレイ上の点に来るよう、傾けた体の上方向に半分ずらす
+    _up.set(0, 1, 0).applyQuaternion(model.quaternion)
+    model.position.addScaledVector(_up, -enemy.height / 2)
+    model.userData.center = center.clone() // エフェクトやアイテムを出す位置（体の中心）
 
     model.userData.enemy = enemy
     model.userData.baseScale = model.scale.x // 変形・撃破演出で元の大きさに戻すため
@@ -163,10 +190,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
       if (running && !isDefeated) setEnemiesScale(1, 1, 1)
     }, DAMAGE_SQUASH_MS)
 
-    // 原点が足元なので、エフェクトは体の中心に出す
+    // エフェクトは体の中心に出す
     for (const model of enemies) {
-      _hitPos.copy(model.position)
-      _hitPos.y += model.userData.enemy.height / 2
+      _hitPos.copy(model.userData.center)
       createHitEffect(scene, camera, _hitPos)
     }
   }
@@ -182,15 +208,14 @@ export const createScene = (canvas, { onFrame } = {}) => {
   const updateDefeat = () => {
     if (!isDefeated) return
     for (const model of enemies) {
-      model.rotation.y += 0.1
+      model.rotateY(0.1) // 傾いた体の縦軸まわりに回す（体の中心は動かない）
       model.scale.multiplyScalar(0.9)
     }
     if (enemies[0].scale.x > enemies[0].userData.baseScale * DEFEAT_MIN_SCALE) return
 
     // 消えきったら、体の中心があった位置にアイテムを落とす
     for (const model of enemies) {
-      _hitPos.copy(model.position)
-      _hitPos.y += model.userData.enemy.height / 2
+      _hitPos.copy(model.userData.center)
       spawnItem(scene, _hitPos)
     }
     clearEnemies()
@@ -234,6 +259,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
       window.removeEventListener('resize', resize)
       clearEnemies()
       clearItems()
+      envMap.dispose()
       renderer.dispose()
     },
   }

@@ -163,10 +163,20 @@
   position: absolute;
   bottom: 12%;
   margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: #f5d0fe;
-  text-shadow: 0 0 18px rgba(168, 85, 247, 0.9);
+  /* ドット風の文字。フォントは index.html で「ラスボスがあらわれた！」の文字だけ読み込む */
+  font-family: 'DotGothic16', monospace;
+  font-size: min(30px, 6.8vw); /* 狭い画面でもはみ出さないよう、画面幅に合わせて縮める */
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: #fff4c2;
+  /* ぼかさず 1 段ずつずらした影で、レトロゲームのような縁取りにする */
+  text-shadow:
+    3px 0 0 #3b0764, -3px 0 0 #3b0764, 0 3px 0 #3b0764, 0 -3px 0 #3b0764,
+    3px 3px 0 #3b0764, -3px 3px 0 #3b0764, 3px -3px 0 #3b0764, -3px -3px 0 #3b0764,
+    6px 6px 0 #a855f7;
+  -webkit-font-smoothing: none;
+  image-rendering: pixelated;
   opacity: 0;
   transition: opacity 0.6s ease-out;
 }
