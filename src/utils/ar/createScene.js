@@ -72,6 +72,22 @@ export const createScene = (canvas, { onFrame } = {}) => {
   const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
 
   /**
+   * 読み込んだモデルを AR 空間に置ける状態にする（敵・アイテム共通）。
+   * マテリアルを個体ごとに複製し、表示サイズを height [m] に揃え、
+   * 演出で scale を戻すときの基準 baseScale を記録する
+   */
+  const prepareModel = (model, height) => {
+    // clone() はマテリアルを共有するので、この個体だけ色を変えられるよう複製する
+    model.traverse((obj) => {
+      if (obj.material) obj.material = obj.material.clone()
+    })
+    _box.setFromObject(model).getSize(_size)
+    model.scale.setScalar(height / _size.y)
+    model.userData.baseScale = model.scale.x
+    return model
+  }
+
+  /**
    * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
    * 既に敵が出ていれば先に消してから出す。
    * enemy: ENEMIES の要素
@@ -85,16 +101,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
 
     const model = await loadEnemyModel(enemy.modelUrl)
     if (!running) return null // 読み込み中に dispose された
-
-    // clone() はマテリアルを共有するので、この個体だけ色を変えられるよう複製する
-    model.traverse((obj) => {
-      if (obj.material) obj.material = obj.material.clone()
-    })
-
-    // 表示サイズを enemy.height [m] に揃える
-    _box.setFromObject(model).getSize(_size)
-    model.scale.setScalar(enemy.height / _size.y)
-    model.userData.baseScale = model.scale.x // ダメージ演出で戻すときの基準
+    prepareModel(model, enemy.height)
 
     // 原点が足元なので、モデルの中心がレイ上の点に来るよう半分下げる
     model.position.set(center.x, center.y - enemy.height / 2, center.z)

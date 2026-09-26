@@ -1,8 +1,5 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-
-const loader = new GLTFLoader()
-const cache = new Map() // url → Promise<gltf>
+import { loadModel } from '../item/loadModel'
 
 /**
  * モデルがまだ無い敵の仮モデル（黄色いカプセル）。
@@ -26,13 +23,8 @@ const createPlaceholderModel = () => {
 }
 
 /**
- * glb を読み込み、シーンに追加できる Object3D（複製）を返す。
- * 同じモデルは 2 回目以降ダウンロードしない。
+ * 敵の glb を読み込み、シーンに追加できる Object3D（複製）を返す。
+ * 読み込みとキャッシュは loadModel に任せる。
  * url が null の敵（モデル未作成）は仮モデルを返す。
  */
-export const loadEnemyModel = async (url) => {
-  if (!url) return createPlaceholderModel()
-  if (!cache.has(url)) cache.set(url, loader.loadAsync(url))
-  const gltf = await cache.get(url)
-  return gltf.scene.clone(true)
-}
+export const loadEnemyModel = async (url) => (await loadModel(url)) ?? createPlaceholderModel()
