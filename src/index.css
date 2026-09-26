@@ -54,16 +54,13 @@ body {
   margin: 0;
 }
 
+html,
+body,
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
 }
 
 h1,
@@ -136,5 +133,25 @@ code {
   background: rgba(0, 0, 0, 0.6);
   padding: 12px;
   border-radius: 8px;
+}
+
+
+.ui-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none; /* レイヤー自体は透過。子要素で auto に戻す */
+}
+.ui-layer > * {
+  pointer-events: auto;
+}
+
+.start-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 16px;
+  color: #fff;
+  text-align: center;
 }
 
