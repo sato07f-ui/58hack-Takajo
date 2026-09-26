@@ -60,7 +60,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
   camera.add(frontLight, frontLight.target)
   scene.add(camera) // カメラの子の光を描画に含めるため
 
-  const enemies = [] // 出ている敵のモデル
+  let enemyModel = null // 出ている敵のモデル（同時に出るのは 1 体だけ）
   const projectiles = [] // 飛翔中の魔法弾 { mesh, target, onHit }
   let rafId = 0
   let running = true
@@ -73,6 +73,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
 
   /**
    * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
+   * 既に敵が出ていれば先に消してから出す。
    * enemy: ENEMIES の要素
    */
   const spawnEnemy = async (enemy, screenX, screenY) => {
@@ -101,8 +102,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
     model.lookAt(camera.position.x, model.position.y, camera.position.z)
 
     model.userData.enemy = enemy
+    clearEnemy() // 前の敵が残っていれば入れ替える
     scene.add(model)
-    enemies.push(model)
+    enemyModel = model
     return model
   }
 
@@ -116,69 +118,63 @@ export const createScene = (canvas, { onFrame } = {}) => {
     projectiles.length = 0
   }
 
-  /** 出ている敵を全て消す */
-  const clearEnemies = () => {
+  /** 出ている敵を消す（いなければ何もしない） */
+  const clearEnemy = () => {
     clearProjectiles()
-    for (const model of enemies) {
-      scene.remove(model)
-      model.traverse((obj) => {
+    if (enemyModel) {
+      scene.remove(enemyModel)
+      enemyModel.traverse((obj) => {
         obj.geometry?.dispose()
         obj.material?.dispose()
       })
+      enemyModel = null
     }
-    enemies.length = 0
     isDefeated = false
   }
 
-  /** 出ている敵全員の emissive を color にする */
-  const setEnemiesEmissive = (color) => {
-    for (const model of enemies) {
-      model.traverse((obj) => {
-        obj.material?.emissive?.copy(color)
-      })
-    }
+  /** 出ている敵の emissive を color にする */
+  const setEnemyEmissive = (color) => {
+    enemyModel?.traverse((obj) => {
+      obj.material?.emissive?.copy(color)
+    })
   }
 
-  /** 出ている敵全員の scale を基準の (sx, sy, sz) 倍にする */
-  const setEnemiesSquash = (sx, sy, sz) => {
-    for (const model of enemies) {
-      const base = model.userData.baseScale ?? 1
-      model.scale.set(base * sx, base * sy, base * sz)
-    }
+  /** 出ている敵の scale を基準の (sx, sy, sz) 倍にする */
+  const setEnemySquash = (sx, sy, sz) => {
+    if (!enemyModel) return
+    const base = enemyModel.userData.baseScale ?? 1
+    enemyModel.scale.set(base * sx, base * sy, base * sz)
   }
 
   /**
    * ダメージを受けた演出：敵を一瞬白く光らせ、潰して戻し、リングと粒子を出す。
-   * hitPosition を省略すると各敵の中心にエフェクトを出す
+   * hitPosition を省略すると敵の中心にエフェクトを出す。敵がいなければ何もしない
    */
   const playDamageEffect = (hitPosition) => {
-    setEnemiesEmissive(_white)
+    if (!enemyModel) return
+    setEnemyEmissive(_white)
     clearTimeout(damageTimer)
     damageTimer = setTimeout(() => {
-      if (running) setEnemiesEmissive(_black)
+      if (running) setEnemyEmissive(_black)
     }, DAMAGE_FLASH_MS)
 
     if (!isDefeated) {
-      setEnemiesSquash(1.3, 0.8, 1.3)
+      setEnemySquash(1.3, 0.8, 1.3)
       clearTimeout(squashTimer)
       squashTimer = setTimeout(() => {
-        if (running && !isDefeated) setEnemiesSquash(1, 1, 1)
+        if (running && !isDefeated) setEnemySquash(1, 1, 1)
       }, DAMAGE_SQUASH_MS)
     }
 
-    if (hitPosition) {
-      createHitEffect(scene, camera, hitPosition)
-    } else {
-      for (const model of enemies) createHitEffect(scene, camera, centerOf(model, _center))
-    }
+    createHitEffect(scene, camera, hitPosition ?? centerOf(enemyModel, _center))
   }
 
   /**
-   * 魔法弾を撃つ。カメラの少し下・前から出て、一番手前の敵へ飛んでいく。
+   * 魔法弾を撃つ。カメラの少し下・前から出て、出ている敵へ飛んでいく。
    * 着弾したら playDamageEffect と onHit() を呼ぶ。敵がいなければ何もしない
    */
   const shootMagic = (onHit) => {
-    const target = enemies[0]
+    const target = enemyModel
     if (!target || isDefeated) return
 
     const projectile = new THREE.Mesh(
@@ -216,15 +212,13 @@ export const createScene = (canvas, { onFrame } = {}) => {
     onFrame?.(camera)
 
     // 1. 撃破演出：回転しながら縮み、十分小さくなったら非表示にする
-    if (isDefeated) {
-      for (const model of enemies) {
-        model.rotation.x += 0.1
-        model.rotation.y += 0.1
-        if (model.scale.x > (model.userData.baseScale ?? 1) * 0.05) {
-          model.scale.multiplyScalar(0.9)
-        } else {
-          model.visible = false
-        }
+    if (isDefeated && enemyModel) {
+      enemyModel.rotation.x += 0.1
+      enemyModel.rotation.y += 0.1
+      if (enemyModel.scale.x > (enemyModel.userData.baseScale ?? 1) * 0.05) {
+        enemyModel.scale.multiplyScalar(0.9)
+      } else {
+        enemyModel.visible = false
       }
     }
 
@@ -258,7 +252,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
     camera,
     renderer,
     spawnEnemy,
-    clearEnemies,
+    clearEnemy,
     playDamageEffect,
     shootMagic,
     playDefeatEffect,
@@ -268,7 +262,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
       clearTimeout(damageTimer)
       clearTimeout(squashTimer)
       window.removeEventListener('resize', resize)
-      clearEnemies()
+      clearEnemy()
       renderer.dispose()
     },
   }
