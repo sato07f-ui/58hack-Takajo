@@ -29,11 +29,7 @@ export const StartScreen = ({ onStart }) => {
       <div className={styles.logoArea}>
         <div className={styles.logoBox}>
           {/* 2. テキストから画像タグに差し替え */}
-          <img
-            src={logoImg}
-            alt="Supermarket Dungeon"
-            className={styles.logoImage}
-          />
+          <img src={logoImg} alt="Mart Quest" className={styles.logoImage} />
         </div>
       </div>
 
