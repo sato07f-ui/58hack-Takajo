@@ -2,9 +2,11 @@ import { useRef, useState } from 'react'
 import { ArScene } from './utils/ar/ArScene'
 //import { DebugRemote } from './utils/ar/DebugRemote'
 import { useDeviceOrientation } from './utils/ar/useDeviceOrientation'
+import { TrackerMode } from './components/tracker/TrackerMode'
 
 function App() {
   const [started, setStarted] = useState(false)
+  const [mode, setMode] = useState('game') // 'game' | 'tracker'
   const { orientationRef, permission, requestPermission } = useDeviceOrientation()
   const sceneRef = useRef(null)
 
@@ -16,12 +18,19 @@ function App() {
     setStarted(true) // ArScene のマウント時にカメラ権限が要求される
   }
 
+  if (mode === 'tracker') {
+    return <TrackerMode onExit={() => setMode('game')} />
+  }
+
   if (!started) {
     return (
       <div className="start-screen">
         <h1>スーパーダンジョン</h1>
         <button type="button" onClick={handleStart}>
           冒険をはじめる
+        </button>
+        <button type="button" onClick={() => setMode('tracker')}>
+          見守りモード
         </button>
         {permission === 'denied' && (
           <p>センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。</p>

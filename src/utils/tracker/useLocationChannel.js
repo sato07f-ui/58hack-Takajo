@@ -7,6 +7,9 @@ import { toChannelName } from './roomCode'
 const MIN_SEND_INTERVAL_MS = 2000
 const MIN_SEND_DISTANCE_M = 3
 
+/** 位置が変わらなくてもこの間隔で再送する（相手の途中入室・静止中の途絶誤判定対策） */
+const HEARTBEAT_MS = 10000
+
 /** これ以上相手の位置が届かなければ「通信が途切れている」とみなす */
 export const STALE_AFTER_MS = 30000
 
@@ -35,7 +38,8 @@ export function useLocationChannel({ roomCode, role }) {
   const [now, setNow] = useState(() => Date.now())
 
   const channelRef = useRef(null)
-  const lastSentRef = useRef(null) // { lat, lng, ts }
+  const lastSentRef = useRef(null) // 間引き判定用 { lat, lng, ts }
+  const latestRef = useRef(null) // 最後に渡された自分の位置（再送用）
   const handlersRef = useRef(new Map()) // event → Set<handler>
 
   const peerRole = role === 'parent' ? 'child' : 'parent'
@@ -56,6 +60,17 @@ export function useLocationChannel({ roomCode, role }) {
     channelRef.current = channel
     lastSentRef.current = null
 
+    // Broadcast は保存されないので、止まっていても定期的に再送する。
+    // 相手が後から入室しても位置が届き、静止中でも「通信途絶」と誤判定されない
+    const resend = () => {
+      const loc = latestRef.current
+      if (!loc) return
+      lastSentRef.current = { lat: loc.lat, lng: loc.lng, ts: Date.now() }
+      channel.send({ type: 'broadcast', event: 'location', payload: { role, ...loc } })
+    }
+    const heartbeat = setInterval(resend, HEARTBEAT_MS)
+    let peerWasOnline = false
+
     channel.on('broadcast', { event: 'location' }, ({ payload }) => {
       if (payload?.role !== peerRole) return
       update({
@@ -72,8 +87,11 @@ export function useLocationChannel({ roomCode, role }) {
       // 自分と同じ役割が 2 人以上いる = 同じコードを別の親（子）が使っている。
       // 後から入った側（joinedAt が最小でない側）だけをエラーにする
       const duplicated = sameRole.length > 1 && Math.min(...sameRole.map((m) => m.joinedAt)) < joinedAt
+      const peerOnline = (state[peerRole]?.length ?? 0) > 0
+      if (peerOnline && !peerWasOnline) resend() // 相手が入室した瞬間に自分の位置を届ける
+      peerWasOnline = peerOnline
       update({
-        peerOnline: (state[peerRole]?.length ?? 0) > 0,
+        peerOnline,
         ...(duplicated && {
           status: 'error',
           error: role === 'parent' ? 'このコードは使用中です。別のコードにしてください' : 'このコードは別の子供が使っています',
@@ -97,6 +115,7 @@ export function useLocationChannel({ roomCode, role }) {
     })
 
     return () => {
+      clearInterval(heartbeat)
       supabase.removeChannel(channel)
       channelRef.current = null
     }
@@ -113,6 +132,7 @@ export function useLocationChannel({ roomCode, role }) {
     (loc) => {
       const channel = channelRef.current
       if (!channel || !loc) return
+      latestRef.current = loc
       const last = lastSentRef.current
       if (last && loc.ts - last.ts < MIN_SEND_INTERVAL_MS && distanceMeters(last, loc) < MIN_SEND_DISTANCE_M) {
         return
