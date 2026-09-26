@@ -3,6 +3,7 @@ import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { loadModel } from '../item/loadModel'
 import { findItem } from '../item/items'
 import { createHitEffect, updateHitEffects } from './hitEffect'
+import { createHpBar } from './hpBar'
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -12,7 +13,9 @@ const DEG = Math.PI / 180
 
 const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
-const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れる時間
+const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
+const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
+const HP_BAR_GAP = 0.04 // 敵の頭のてっぺんから HP ゲージまでの距離 [m]
 const PROJECTILE_HIT_DISTANCE = 0.15 // 魔法弾がこの距離 [m] まで近づいたら着弾
 const PROJECTILE_LERP = 0.15 // 魔法弾が毎フレーム敵へ寄る割合
 const DROP_FLOAT_Y = 0.15 // ドロップを敵の足元から浮かせる高さ [m]
@@ -26,6 +29,7 @@ const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
 const _size = new THREE.Vector3()
 const _center = new THREE.Vector3()
+const _barPos = new THREE.Vector3()
 const _collectPoint = new THREE.Vector3(0, -0.15, -0.3) // ドロップの吸い寄せ先（カメラローカル：画面中央やや下、30cm 手前）
 const _target = new THREE.Vector3() // 吸い寄せ先のワールド座標（毎フレーム計算）
 const _white = new THREE.Color(0xffffff)
@@ -45,12 +49,10 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
 /**
  * Three.js の scene / camera / renderer を作り、描画ループを開始する。
  * onFrame(camera): 毎フレーム描画前に呼ばれる（向き追従などに使う）
- * onDefeat(enemy, item): 撃破演出が終わり敵が消えたときに呼ばれる。
- *   item はその敵のドロップ（ITEMS の要素）。何も落とさない敵なら null
- * onCollect(item): ドロップがプレイヤーの手元に届いて消えたときに呼ばれる。item は ITEMS の要素
+ * onItemCollect(item): 敵が落としたアイテムがプレイヤーの手元に届いて消えたときに呼ばれる（item は ITEMS の要素）
  * 戻り値の dispose() を呼ぶと全て停止・破棄する。
  */
-export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
+export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true, //背景を透明にしてカメラ映像を透かす
@@ -80,8 +82,8 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
   let running = true
   let damageTimer = 0
   let squashTimer = 0
-  let isDefeated = false // 撃破演出中なら true
-  let hasDropped = false // 今の敵のドロップ処理（spawnDrop と onDefeat）を済ませたら true
+  let isDefeated = false // 撃破演出中（縮んで消える途中）なら true
+  let hasDropped = false // 今の敵のドロップ処理を済ませたら true
 
   /** モデルの中心（ワールド座標）を out に入れて返す */
   const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
@@ -124,8 +126,10 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
     model.lookAt(camera.position.x, model.position.y, camera.position.z)
 
     model.userData.enemy = enemy
+    // HP ゲージは敵の子にすると変形・回転に巻き込まれるので scene に直接置き、毎フレーム頭上に合わせる
+    model.userData.hpBar = createHpBar()
     clearEnemy() // 前の敵が残っていれば入れ替える
-    scene.add(model)
+    scene.add(model, model.userData.hpBar.group)
     enemyModel = model
     return model
   }
@@ -152,14 +156,14 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
   }
 
   /**
-   * ドロップを回収する：消して onCollect(item) を呼ぶ。いなければ何もしない。
+   * ドロップを回収する：消して onItemCollect(item) を呼ぶ。いなければ何もしない。
    * clearEnemy() 経由の片付けとは違い、こちらは「手に入れた」扱い
    */
   const collectDrop = () => {
     if (!dropModel) return
     const item = dropModel.userData.item
     clearDrop()
-    if (running && item) onCollect?.(item)
+    if (running && item) onItemCollect?.(item)
   }
 
   /**
@@ -186,12 +190,13 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
     return model
   }
 
-  /** 出ている敵を消す（いなければ何もしない）。ドロップと魔法弾も一緒に消す */
+  /** 出ている敵を消す（いなければ何もしない）。HP ゲージ・ドロップ・魔法弾も一緒に消す */
   const clearEnemy = () => {
     clearDrop()
     clearProjectiles()
     if (enemyModel) {
       scene.remove(enemyModel)
+      enemyModel.userData.hpBar?.dispose()
       enemyModel.traverse((obj) => {
         obj.geometry?.dispose()
         obj.material?.dispose()
@@ -200,6 +205,19 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
     }
     isDefeated = false
     hasDropped = false
+  }
+
+  /** 出ている敵の HP ゲージを ratio（0〜1。残り HP ÷ 最大 HP）にする */
+  const setEnemyHpRatio = (ratio) => {
+    enemyModel?.userData.hpBar?.setRatio(ratio)
+  }
+
+  /** HP ゲージを敵の頭上に合わせ、減る様子を 1 フレーム進める */
+  const updateHpBar = () => {
+    if (!enemyModel) return
+    _barPos.copy(enemyModel.position)
+    _barPos.y += enemyModel.userData.enemy.height + HP_BAR_GAP // 原点が足元なので、身長ぶん上が頭のてっぺん
+    enemyModel.userData.hpBar.update(camera, _barPos)
   }
 
   /** 出ている敵の emissive を color にする */
@@ -263,8 +281,10 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
     return true
   }
 
-  /** 撃破演出を開始する。以降、敵は回転しながら縮んで消える */
+  /** 撃破演出を開始する。以降、敵は回転しながら縮んで消え、消えたらアイテムを落とす（処理は loop 内） */
   const playDefeatEffect = () => {
+    if (!enemyModel) return
+    clearTimeout(squashTimer)
     isDefeated = true
     clearProjectiles()
   }
@@ -283,21 +303,20 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
     if (!running) return
     onFrame?.(camera)
 
-    // 1. 撃破演出：回転しながら縮み、十分小さくなったら非表示にする
+    // 1. 撃破演出：回転しながら縮み、十分小さくなったら非表示にしてドロップを出す
     if (isDefeated && enemyModel) {
       enemyModel.rotation.x += 0.1
       enemyModel.rotation.y += 0.1
-      if (enemyModel.scale.x > (enemyModel.userData.baseScale ?? 1) * 0.05) {
+      if (enemyModel.scale.x > (enemyModel.userData.baseScale ?? 1) * DEFEAT_MIN_SCALE) {
         enemyModel.scale.multiplyScalar(0.9)
       } else {
         enemyModel.visible = false
-        // 敵が消えた直後に 1 回だけドロップを出し、親に通知する
+        enemyModel.userData.hpBar.group.visible = false
+        // 敵が消えた直後に 1 回だけドロップを出す
         if (!hasDropped) {
           hasDropped = true
-          const enemy = enemyModel.userData.enemy
-          const item = findItem(enemy?.drop)
+          const item = findItem(enemyModel.userData.enemy?.drop)
           if (item) spawnDrop(item, enemyModel.position)
-          onDefeat?.(enemy, item)
         }
       }
     }
@@ -319,7 +338,8 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
       }
     }
 
-    // 3. hitEffect.js のリング・粒子を進める
+    // 3. HP ゲージを頭上に追従させ、hitEffect.js のリング・粒子を進める
+    updateHpBar()
     updateHitEffects()
 
     // 4. ドロップの演出：しばらく足元で回り、その後プレイヤーの手元へ吸い寄せられて消える
@@ -353,6 +373,7 @@ export const createScene = (canvas, { onFrame, onDefeat, onCollect } = {}) => {
     spawnDrop,
     clearDrop,
     collectDrop,
+    setEnemyHpRatio,
     playDamageEffect,
     shootMagic,
     playDefeatEffect,

@@ -643,6 +643,6 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
 ---
 
 ## 11. 次のステップ（本書の範囲外）
-- **戦闘との接続**: `onEnemySpawn(enemy)` でゲームロジックに敵の出現を知らせ、HP などの状態を持たせる。倒すと撃破演出のあとに `onDefeat(enemy, item)` が呼ばれ、敵の足元にドロップアイテム（`enemy.drop` → `src/utils/item/items.js`）が出る。ドロップは約 0.8 秒後にプレイヤー（カメラ手前）へ吸い寄せられ、消えたときに `onCollect(item)` が呼ばれる。回収前に `clearEnemy()`（または次の `spawnEnemy`）を呼ぶと `onCollect` は呼ばれず敵と一緒に消える。次の敵を探すなら `clearEnemy()` → `rescan()`
+- **戦闘との接続**: `onEnemySpawn(enemy)` でゲームロジックに敵の出現を知らせ、HP などの状態を持たせる。倒すと撃破演出のあとに `onDefeat(enemy, item)` が呼ばれ、敵の足元にドロップアイテム（`enemy.drop` → `src/utils/item/items.js`）が出る。ドロップは約 0.8 秒後にプレイヤー（カメラ手前）へ吸い寄せられ、消えたときに `onItemCollect(item)` が呼ばれる。回収前に `clearEnemy()`（または次の `spawnEnemy`）を呼ぶと `onItemCollect` は呼ばれず敵と一緒に消える。次の敵を探すなら `clearEnemy()` → `rescan()`
 - **タップ判定**: `THREE.Raycaster` で画面タップ位置から敵（`userData.enemy`）を判定する（[AR_SETUP.md](AR_SETUP.md) 9 章）
 - **出現演出**: `spawnEnemy` の中でスケールを 0 から 1 へアニメーションさせる

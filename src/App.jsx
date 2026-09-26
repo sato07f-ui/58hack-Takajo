@@ -3,11 +3,14 @@ import { ArScene } from './utils/ar/ArScene'
 //import { DebugRemote } from './utils/ar/DebugRemote'
 import { useDeviceOrientation } from './utils/ar/useDeviceOrientation'
 import { TrackerMode } from './components/tracker/TrackerMode'
+import { StartScreen } from './components/StartScreen/StartScreen'
+import { findItem } from './utils/item/items'
 import './App.css'
 
-const ATTACK_MP_COST = 10
 const ATTACK_DAMAGE = 20
 const COOLDOWN_MS = 1000
+const ENEMY_MAX_HP = 100
+const ITEM_TOAST_MS = 1500 // 「〇〇を手に入れた！」を出しておく時間
 
 function App() {
   const [started, setStarted] = useState(false)
@@ -16,18 +19,14 @@ function App() {
   const sceneRef = useRef(null) // Three.js（3D空間）へ命令を送るためのパイプ
 
   // バトル用の状態
-  const [enemyHp, setEnemyHp] = useState(100)
-  const [mp, setMp] = useState(50)
+  const [enemy, setEnemy] = useState(null) // いま出ている敵（ENEMIES の要素）。いなければ null
+  // 敵の残り HP。表示は頭上の HP ゲージ（createScene）が担うので state ではなく ref で持ち、着弾コールバックから直接読み書きする
+  const enemyHpRef = useRef(ENEMY_MAX_HP)
   const [isCooldown, setIsCooldown] = useState(false)
-  const [currentEnemy, setCurrentEnemy] = useState(null) // 出ている敵（ENEMIES の要素）
-  const [droppedItem, setDroppedItem] = useState(null) // 手に入れたアイテム（ITEMS の要素）
-  const defeatedRef = useRef(false) // playDefeatEffect を 1 回だけ呼ぶため
 
-  // ドロップが手元に届いて消えた瞬間に呼ばれる。ここで「手に入れた」表示と短い振動を出す
-  const handleCollect = (item) => {
-    setDroppedItem(item)
-    navigator.vibrate?.(50) // 着弾時（100ms）より短くする
-  }
+  // 手持ちのアイテム: { [アイテムの id]: 個数 }
+  const [inventory, setInventory] = useState({})
+  const [itemToast, setItemToast] = useState(null) // 直前に拾ったアイテム（お知らせ表示用）
 
   // クールダウンのタイマー
   useEffect(() => {
@@ -36,24 +35,43 @@ function App() {
     return () => clearTimeout(timer)
   }, [isCooldown])
 
-  // HP が 0 になったら撃破演出を 1 回だけ始める（ドロップは createScene 側が演出後に出す）
+  // お知らせを一定時間で消す
   useEffect(() => {
-    if (enemyHp > 0 || defeatedRef.current) return
-    defeatedRef.current = true
-    sceneRef.current?.playDefeatEffect()
-  }, [enemyHp])
+    if (!itemToast) return
+    const timer = setTimeout(() => setItemToast(null), ITEM_TOAST_MS)
+    return () => clearTimeout(timer)
+  }, [itemToast])
 
-  // 魔法を撃つ。HP 減算と光る演出は魔法弾が着弾した瞬間に行う
+  // 敵が出現したら、その敵と戦う（HP を満タンにする）
+  const handleEnemySpawn = (spawned) => {
+    setEnemy(spawned)
+    enemyHpRef.current = ENEMY_MAX_HP
+  }
+
+  // 敵が落としたアイテムが手元に届いたら手持ちに入れる
+  const handleItemCollect = (item) => {
+    setInventory((prev) => ({ ...prev, [item.id]: (prev[item.id] ?? 0) + 1 }))
+    setItemToast(item)
+    navigator.vibrate?.(50) // 着弾時（100ms）より短くする
+  }
+
+  // 魔法を撃つ。HP 減算と演出は魔法弾が着弾した瞬間に行う
   const handleAttack = () => {
-    if (isCooldown || mp < ATTACK_MP_COST) return
+    if (!enemy || isCooldown) return // 撃てる回数に制限はなく、クールダウンを待てば何度でも撃てる
 
     const fired = sceneRef.current?.shootMagic(() => {
-      setEnemyHp((prev) => Math.max(prev - ATTACK_DAMAGE, 0))
+      const nextHp = Math.max(enemyHpRef.current - ATTACK_DAMAGE, 0)
+      enemyHpRef.current = nextHp
+      sceneRef.current?.setEnemyHpRatio(nextHp / ENEMY_MAX_HP) // 敵の頭上の HP ゲージに反映する
+      // HP が 0 なら撃破（消滅＋アイテムドロップ）。ダメージ演出（発光・変形・エフェクト）は着弾時に createScene 側で出る
+      if (nextHp === 0) {
+        sceneRef.current?.playDefeatEffect()
+        setEnemy(null) // 撃破演出中は攻撃できないようにする
+      }
       navigator.vibrate?.(100) // PC や一部 iOS では動かないがエラーにはならない
     })
-    if (!fired) return // 敵がいない、または撃破演出中は MP を消費しない
+    if (!fired) return // 敵がいない、または撃破演出中はクールダウンに入らない
 
-    setMp((prev) => prev - ATTACK_MP_COST)
     setIsCooldown(true)
   }
 
@@ -71,19 +89,15 @@ function App() {
 
   if (!started) {
     return (
-      <div className="start-screen">
-        <h1>スーパーダンジョン</h1>
-        <button type="button" onClick={handleStart}>
-          冒険をはじめる
-        </button>
-        <button type="button" onClick={() => setMode('tracker')}>
-          見守りモード
-        </button>
-        {permission === 'denied' && (
-          <p>センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。</p>
-        )}
-        {permission === 'unsupported' && <p>この端末は向きセンサーに対応していません。</p>}
-      </div>
+      <StartScreen
+        onStart={handleStart}
+        onOpenTracker={() => setMode('tracker')}
+        notice={
+          permission === 'denied'
+            ? 'センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。'
+            : null
+        }
+      />
     )
   }
 
@@ -92,27 +106,39 @@ function App() {
       <ArScene
         orientationRef={orientationRef}
         sceneRef={sceneRef}
-        onEnemySpawn={setCurrentEnemy}
-        onCollect={handleCollect}
+        onEnemySpawn={handleEnemySpawn}
+        onItemCollect={handleItemCollect}
       />
       <div className="ui-layer">
         {/* 実機検証用リモコン。本番では外す */}
         {/* <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} /> */}
 
-        <div className="battle-status">
-          {currentEnemy && <p>敵: {currentEnemy.name}</p>}
-          <p>敵のHP: {enemyHp}</p>
-          <p>MP: {mp}</p>
-          {droppedItem && <p>{droppedItem.name} を手に入れた！</p>}
+        <div className="inventory">
+          <p className="inventory-title">手持ち</p>
+          {Object.keys(inventory).length === 0 ? (
+            <p>なし</p>
+          ) : (
+            Object.entries(inventory).map(([id, count]) => (
+              <p key={id}>
+                {findItem(id)?.name ?? id} ×{count}
+              </p>
+            ))
+          )}
         </div>
+
+        {itemToast && (
+          <p key={itemToast.id + inventory[itemToast.id]} className="item-toast">
+            {itemToast.name}を手に入れた！
+          </p>
+        )}
 
         <button
           type="button"
           className="attack-button"
           onClick={handleAttack}
-          disabled={isCooldown || mp < ATTACK_MP_COST}
+          disabled={!enemy || isCooldown}
         >
-          {isCooldown ? 'チャージ中...' : `魔法を撃つ (MP-${ATTACK_MP_COST})`}
+          {isCooldown ? 'チャージ中...' : '魔法を撃つ'}
         </button>
       </div>
     </>
