@@ -7,7 +7,7 @@ const _q0 = new THREE.Quaternion()
 const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸 -90° 補正
 const DEG = Math.PI / 180
 
-const SPAWN_DISTANCE = 2 // カメラから敵までの距離 [m]
+const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
