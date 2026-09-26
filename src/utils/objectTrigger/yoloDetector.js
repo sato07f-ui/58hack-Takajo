@@ -1,4 +1,5 @@
 import * as ort from 'onnxruntime-web/webgpu' // WebGPU と WASM の両方に対応したビルド
+import { instrumentSessionRun, logWebGpuSupport, perfStart } from '../debug/perfLog' // [perf]
 
 // ORT の WASM 本体は CDN から読む（Vite で配信設定をしなくて済む）。バージョンはパッケージと揃える
 ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ort.env.versions.web}/dist/`
@@ -46,9 +47,13 @@ const nonMaxSuppression = (boxes, iouThreshold) => {
  * （bbox は入力映像の px）。input は <video> / <canvas> / <img>。
  */
 export const createYoloDetector = async (modelUrl, { scoreThreshold = 0.25, iouThreshold = 0.45, maxDetections = 20 } = {}) => {
+  logWebGpuSupport() // [perf]
+  const endCreate = perfStart('session 作成（モデルと .wasm のダウンロード・初期化）') // [perf]
   const session = await ort.InferenceSession.create(modelUrl, {
     executionProviders: ['webgpu', 'wasm'], // WebGPU が使えない端末は WASM で動く
   })
+  endCreate() // [perf]
+  instrumentSessionRun(session) // [perf]
   const inputName = session.inputNames[0]
   const outputName = session.outputNames[0]
 

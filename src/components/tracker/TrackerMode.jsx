@@ -4,8 +4,8 @@ import { ParentView } from './ParentView'
 import { ChildView } from './ChildView'
 
 /**
- * 見守りモードの入口。役割選択 → 親 / 子の画面。
- * props.onExit(): ゲームの開始画面に戻る
+ * 見守りモードの入口。役割選択 → 親 / 子の画面。ゲームは子供の画面から始まる。
+ * props.onExit(): タイトル画面に戻る
  * props.ar: { orientationRef, requestPermission }（子供が AR ゲームを開くために使う）
  */
 export function TrackerMode({ onExit, ar }) {
