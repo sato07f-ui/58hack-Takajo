@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createImageTracker } from './createImageTracker'
+import { createObjectTracker, loadObjectModel } from './createObjectTracker'
 
 /**
- * enabled が true になったら targetUrls の .mind に登録された画像を探し始める hook。
- * 見つかったら onDetect({ targetIndex, videoX, videoY }) を呼んで止まる。
- * targetIndex は「targetUrls の何番目のファイルの画像か」。
- * targetUrls は毎レンダーで作り直さないこと（変わると認識をやり直す）。
+ * enabled が true になったら、COCO-SSD で targetClass（例: 'banana'）を探し始める hook。
+ * 見つかったら onDetect({ className, score, videoX, videoY }) を呼んで止まる。
  * 戻り値: { status, error, stop, rescan }
- * status: 'idle' | 'scanning' | 'detected' | 'stopped' | 'error'
- * stop(): 探すのをやめる（他の方法で敵が見つかったときなど）。準備中に呼んでも、準備後に探し始めない
+ * status: 'idle' | 'loading' | 'scanning' | 'detected' | 'stopped' | 'error'
+ * stop(): 探すのをやめる（他の方法で敵が見つかったときなど）。モデル読み込み中に呼んでも、読み込み後に探し始めない
  * rescan(): 敵を倒した後などに、もう一度探し始める
  */
-export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect }) => {
+export const useObjectTrigger = (
+  videoRef,
+  { enabled, targetClass, minScore = 0.6, intervalMs = 500, onDetect },
+) => {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const trackerRef = useRef(null)
@@ -29,20 +30,22 @@ export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect }) => 
 
     const start = async () => {
       try {
-        const tracker = await createImageTracker(videoRef.current, {
-          targetUrls,
+        setStatus('loading')
+        const model = await loadObjectModel()
+        if (cancelled) return
+        const tracker = createObjectTracker(videoRef.current, {
+          model,
+          targetClass,
+          minScore,
+          intervalMs,
           onDetect: (result) => {
             setStatus('detected')
             onDetectRef.current?.(result)
           },
         })
-        if (cancelled) {
-          tracker.dispose()
-          return
-        }
         trackerRef.current = tracker
         if (stoppedRef.current) {
-          setStatus('stopped') // 準備中に stop() された
+          setStatus('stopped') // 読み込み中に stop() された
           return
         }
         tracker.start()
@@ -57,15 +60,15 @@ export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect }) => 
 
     return () => {
       cancelled = true
-      trackerRef.current?.dispose()
+      trackerRef.current?.stop() // setInterval を確実に止める
       trackerRef.current = null
     }
-  }, [enabled, targetUrls, videoRef])
+  }, [enabled, targetClass, minScore, intervalMs, videoRef])
 
   const stop = useCallback(() => {
     stoppedRef.current = true
     trackerRef.current?.stop()
-    setStatus((s) => (s === 'scanning' ? 'stopped' : s))
+    setStatus((s) => (s === 'scanning' || s === 'loading' ? 'stopped' : s))
   }, [])
 
   const rescan = useCallback(() => {

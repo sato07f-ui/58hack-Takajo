@@ -11,6 +11,8 @@
     "tunnel": "cloudflared tunnel --protocol http2 --url http://localhost:5173"
   },
   "dependencies": {
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow/tfjs": "^4.22.0",
     "@supabase/supabase-js": "^2.117.2",
     "cloudflared": "^0.7.3",
     "mind-ar": "^1.2.5",
