@@ -22,10 +22,13 @@
 enemyHp === 0 ──▶ App.jsx が sceneRef.playDefeatEffect() を呼ぶ
 撃破演出完了（敵が visible=false）──▶ createScene が敵の位置に spawnDrop(item) を実行
                                     ──▶ onDefeat(enemy, item) を App.jsx に通知
+ドロップ生成後 ──▶ idle（0.8 秒足元で回転）──▶ attract（カメラ手前へ吸い寄せ・縮小）
+            ──▶ collected（clearDrop() → onCollect(item) を App.jsx に通知）
 ```
 - ドロップの位置は「敵の足元（`enemyModel.position`）」とし、高さ 0.15 m で浮かせて表示する。
 - ドロップは回転させて「拾えるもの」に見せる（毎フレーム `rotation.y += 0.02`）。
-- 拾う・インベントリに入れる処理は本手順書の範囲外。表示までを担当する。
+- 生成後の自動回収（`idle → attract → collected`）と `onCollect(item)` は `docs/DROP_COLLECT_PLAN.md` で実装した。「手に入れた！」の表示は `onDefeat` ではなく `onCollect` で行う。
+- インベントリに入れる処理は本手順書の範囲外。
 
 ---
 
