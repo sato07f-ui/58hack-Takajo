@@ -13,6 +13,7 @@
 - 敵定義は `src/utils/enemy/enemies.js` の `ENEMIES` 配列。ここに `drop` フィールドを足し、`id` でドロップアイテム定義を引く。
 - glb の読み込みは `src/utils/enemy/loadEnemyModel.js` の GLTFLoader + `cache`（url → Promise）パターンに合わせる。
 - 撃破演出は `createScene.js` の `loop()` 内「1. 撃破演出」（回転しながら縮小 → `visible = false`）に続けてドロップを出す。演出の途中で出すと敵と重なるため、敵が消えた直後に出す。
+- `createScene.js` は敵を配列ではなく単一の `enemyModel` 変数で持つ（同時に出るのは 1 体だけ。`spawnEnemy` は前の敵を `clearEnemy()` で消してから出す）。ドロップも同じ考え方で単一の `dropModel` 変数で持ち、配列は使わない。
 - 新規コードは `src/utils/item/` に置く。変更するのは `enemies.js`, `loadEnemyModel.js`, `createScene.js`, `App.jsx` の 4 ファイルのみ。`ArScene.jsx` は `onEnemySpawn` を既に持つので変更しない。
 
 ### ドロップの流れ
@@ -22,7 +23,7 @@ enemyHp === 0 ──▶ App.jsx が sceneRef.playDefeatEffect() を呼ぶ
 撃破演出完了（敵が visible=false）──▶ createScene が敵の位置に spawnDrop(item) を実行
                                     ──▶ onDefeat(enemy, item) を App.jsx に通知
 ```
-- ドロップの位置は「敵の足元（`model.position`）」とし、高さ 0.15 m で浮かせて表示する。
+- ドロップの位置は「敵の足元（`enemyModel.position`）」とし、高さ 0.15 m で浮かせて表示する。
 - ドロップは回転させて「拾えるもの」に見せる（毎フレーム `rotation.y += 0.02`）。
 - 拾う・インベントリに入れる処理は本手順書の範囲外。表示までを担当する。
 
@@ -46,13 +47,13 @@ enemyHp === 0 ──▶ App.jsx が sceneRef.playDefeatEffect() を呼ぶ
 - **[B-1]** `createScene.js` に `spawnDrop(item, position)` を追加する。
   - `loadModel(item.modelUrl)` でモデルを取得し、`prepareModel(model, item.height)` を適用する。
   - `model.position.copy(position)` した後 `model.position.y += 0.15` で浮かせる。`model.lookAt` はしない（ブーメランは向きを固定しなくてよい）。
-  - `model.userData.item = item` を付けて `scene.add`、`drops` 配列（新設）に push して返す。`running` が false なら `null` を返す。
-- **[B-2]** `loop()` の「1. 撃破演出」で敵を `visible = false` にした直後に、その敵の `userData.enemy.drop` を `findItem` で引き、アイテムがあれば `spawnDrop(item, model.position)` を 1 回だけ呼ぶ。
-  - 二重生成を防ぐため `model.userData.dropped = true` を立て、立っていればスキップする。
-  - 生成後に `onDefeat?.(model.userData.enemy, item)` を呼ぶ。`onDefeat` は `createScene(canvas, { onFrame, onDefeat })` のオプションとして受け取る。アイテムが無い敵でも `onDefeat(enemy, null)` は呼ぶ。
-- **[B-3]** `loop()` に「4. ドロップの回転」を足す。`drops` の各モデルに `rotation.y += 0.02` を適用する。
-- **[B-4]** `clearEnemies()` でドロップも消す。`drops` の各モデルを `scene.remove` し、geometry / material を dispose して `drops.length = 0` にする。`dispose()` は既に `clearEnemies()` を呼んでいるので追加変更は不要。
-- **[B-5]** `createScene` の戻り値に `spawnDrop` を追加する（デバッグ用に外から直接出せるようにする）。
+  - `model.userData.item = item` を付けて `scene.add` し、単一変数 `dropModel`（新設、初期値 `null`）に代入して返す。既に `dropModel` があれば先に `clearDrop()` で消してから入れ替える（敵の `spawnEnemy` と同じ流儀）。`running` が false なら `null` を返す。
+- **[B-2]** `loop()` の「1. 撃破演出」で敵を `visible = false` にした直後に、`enemyModel.userData.enemy.drop` を `findItem` で引き、アイテムがあれば `spawnDrop(item, enemyModel.position)` を 1 回だけ呼ぶ。
+  - 二重生成を防ぐため `let hasDropped = false` フラグ（`isDefeated` と同じ並びの状態変数）を立て、立っていればスキップする。`clearEnemy()` で `isDefeated` と一緒に `false` に戻す。
+  - 生成後に `onDefeat?.(enemyModel.userData.enemy, item)` を呼ぶ。`onDefeat` は `createScene(canvas, { onFrame, onDefeat })` のオプションとして受け取る。アイテムが無い敵でも `onDefeat(enemy, null)` は呼ぶ。
+- **[B-3]** `loop()` に「4. ドロップの回転」を足す。`dropModel` があれば `rotation.y += 0.02` を適用する。
+- **[B-4]** `clearDrop()` を新設し、`dropModel` を `scene.remove` して geometry / material を dispose し `null` に戻す。`clearEnemy()` の先頭でこれを呼ぶ（次の敵を出すときにドロップも一緒に消える）。`dispose()` は既に `clearEnemy()` を呼んでいるので追加変更は不要。
+- **[B-5]** `createScene` の戻り値に `spawnDrop` と `clearDrop` を追加する（デバッグ用に外から直接出し入れできるようにする）。
 
 ## Phase C: App.jsx との接続（PR #3）
 
@@ -67,7 +68,7 @@ enemyHp === 0 ──▶ App.jsx が sceneRef.playDefeatEffect() を呼ぶ
 - **[D-1]** `banana_boomerang.glb` の実サイズ・原点位置を確認し、`height: 0.2` と `y += 0.15` で敵の足元に自然に浮くか実機で調整する。原点が中心にあるモデルなら `prepareModel` 後に `_box.min.y` 分だけ持ち上げる補正を `spawnDrop` に入れる。
 - **[D-2]** `carrot_sword.glb` と `potion.glb` を `ITEMS` に登録し、`carrot` の敵に `drop: 'carrot-sword'` を設定して、仕組みが敵ごとに使えることを確認する（バナナ以外の割り当ては仮でよい）。
 - **[D-3]** `docs/APP_DESIGN.md` の「食材 → 敵の対応表」にドロップアイテム列を追加し、「3Dモデル」の格納場所を `src/assets/*.glb` として記入する。
-- **[D-4]** `docs/IMAGE_TRIGGER_SETUP.md` の「戦闘との接続」に「倒すと `onDefeat(enemy, item)` が呼ばれ、ドロップは `clearEnemies()` で消える」を追記する。
+- **[D-4]** `docs/IMAGE_TRIGGER_SETUP.md` の「戦闘との接続」に「倒すと `onDefeat(enemy, item)` が呼ばれ、ドロップは `clearEnemy()`（または次の `spawnEnemy`）で消える」を追記する。
 
 ---
 
@@ -80,5 +81,5 @@ enemyHp === 0 ──▶ App.jsx が sceneRef.playDefeatEffect() を呼ぶ
 1. `npm run lint` と `npm run build` が通ること。
 2. PC で `npm run dev` し、カメラにバナナ（または COCO-SSD が banana と判定する画像）を映して敵を出す。魔法を 5 回撃って HP が 0 になったら、敵が縮んで消えた後に同じ位置でバナナブーメランが回転表示されること。
 3. 画面に「バナナブーメラン を手に入れた！」が出ること。`drop: null` の敵（ピーマン）では何も出ず、`onDefeat(enemy, null)` だけ呼ばれること（console.log で確認）。
-4. 撃破後に魔法ボタンを連打してもドロップが 2 個以上出ないこと。`clearEnemies()` を DevTools から呼んでドロップが消えること。
+4. 撃破後に魔法ボタンを連打してもドロップが 2 個以上出ないこと（`hasDropped` フラグの確認）。`clearEnemy()` を DevTools から呼んで敵とドロップが両方消えること。`clearDrop()` ではドロップだけが消えること。
 5. `npm run tunnel` で HTTPS 公開し、iPhone Safari と Android Chrome で本物のバナナを映して倒し、ブーメランが敵の足元付近に自然な大きさで出ることを確認する。
