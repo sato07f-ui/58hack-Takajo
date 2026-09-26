@@ -7,7 +7,6 @@ import { StartScreen } from './components/StartScreen/StartScreen'
 import { ITEMS } from './utils/item/items'
 import './App.css'
 
-const ATTACK_MP_COST = 10
 const ATTACK_DAMAGE = 20
 const COOLDOWN_MS = 1000
 const ENEMY_MAX_HP = 100
@@ -22,7 +21,6 @@ function App() {
   // バトル用の状態
   const [enemy, setEnemy] = useState(null) // いま出ている敵（ENEMIES の要素）。いなければ null
   const [enemyHp, setEnemyHp] = useState(ENEMY_MAX_HP)
-  const [mp, setMp] = useState(50)
   const [isCooldown, setIsCooldown] = useState(false)
 
   // 手持ちのアイテム: { [アイテムの id]: 個数 }
@@ -57,9 +55,8 @@ function App() {
 
   // 魔法を撃つ
   const handleAttack = () => {
-    if (!enemy || isCooldown || mp < ATTACK_MP_COST) return
+    if (!enemy || isCooldown) return // 撃てる回数に制限はなく、クールダウンを待てば何度でも撃てる
 
-    setMp((prev) => prev - ATTACK_MP_COST)
     const nextHp = Math.max(enemyHp - ATTACK_DAMAGE, 0)
     setEnemyHp(nextHp)
     setIsCooldown(true)
@@ -110,14 +107,13 @@ function App() {
         {/* 実機検証用リモコン。本番では外す */}
         {/* <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} /> */}
 
-        <div className="battle-status">
-          {enemy && (
+        {enemy && (
+          <div className="battle-status">
             <p>
               {enemy.name}のHP: {enemyHp}
             </p>
-          )}
-          <p>MP: {mp}</p>
-        </div>
+          </div>
+        )}
 
         <div className="inventory">
           <p className="inventory-title">手持ち</p>
@@ -142,9 +138,9 @@ function App() {
           type="button"
           className="attack-button"
           onClick={handleAttack}
-          disabled={!enemy || isCooldown || mp < ATTACK_MP_COST}
+          disabled={!enemy || isCooldown}
         >
-          {isCooldown ? 'チャージ中...' : `魔法を撃つ (MP-${ATTACK_MP_COST})`}
+          {isCooldown ? 'チャージ中...' : '魔法を撃つ'}
         </button>
       </div>
     </>
