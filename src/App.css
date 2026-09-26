@@ -25,6 +25,20 @@ body,
   pointer-events: none;
 }
 
+.battle-status {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  padding: 10px;
+  border-radius: 8px;
+  color: white;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.battle-status p {
+  margin: 0;
+}
+
 .attack-button {
   pointer-events: auto;
   padding: 15px 30px;

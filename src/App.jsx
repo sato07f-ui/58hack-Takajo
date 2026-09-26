@@ -1,80 +1,57 @@
-import { useState, useEffect, useRef } from "react";
-import { ArScene } from "./utils/ar/ArScene";
-import { useDeviceOrientation } from "./utils/ar/useDeviceOrientation";
-import "./App.css";
+import { useEffect, useRef, useState } from 'react'
+import { ArScene } from './utils/ar/ArScene'
+//import { DebugRemote } from './utils/ar/DebugRemote'
+import { useDeviceOrientation } from './utils/ar/useDeviceOrientation'
+import { TrackerMode } from './components/tracker/TrackerMode'
+import './App.css'
+
+const ATTACK_MP_COST = 10
+const ATTACK_DAMAGE = 20
+const COOLDOWN_MS = 1000
 
 function App() {
-  const [started, setStarted] = useState(false);
-  const { orientationRef, permission, requestPermission } =
-    useDeviceOrientation();
+  const [started, setStarted] = useState(false)
+  const [mode, setMode] = useState('game') // 'game' | 'tracker'
+  const { orientationRef, permission, requestPermission } = useDeviceOrientation()
+  const sceneRef = useRef(null) // Three.js（3D空間）へ命令を送るためのパイプ
 
-  // ★追加：Three.js（3D空間）へ命令を送るためのパイプ
-  const sceneRef = useRef(null);
+  // バトル用の状態
+  const [enemyHp, setEnemyHp] = useState(100)
+  const [mp, setMp] = useState(50)
+  const [isCooldown, setIsCooldown] = useState(false)
 
-  // ===============================
-  // ★追加：バトル用の状態（State）管理
-  const [enemyHp, setEnemyHp] = useState(100); // 敵のHP
-  const [mp, setMp] = useState(50); // プレイヤーのMP
-  const [isCooldown, setIsCooldown] = useState(false); // クールダウン中かどうか
-
-  // ★追加：魔法を撃つ処理
-  const handleAttack = () => {
-    // クールダウン中、またはMPが足りない(10未満)なら何もしない
-    if (isCooldown || mp < 10) return;
-
-    // MPを10減らし、敵のHPを20減らす
-    setMp((prev) => prev - 10);
-
-    // 計算後のHPを変数に保持して判定に使う
-    const nextHp = Math.max(enemyHp - 20, 0);
-    setEnemyHp(nextHp);
-
-    // クールダウン開始
-    setIsCooldown(true);
-
-    // ===============================
-    // ★ ヒット時・撃破時のフィードバック演出
-    // ===============================
-    if (sceneRef.current) {
-      if (nextHp === 0) {
-        // ★ HPが0になったら「撃破演出（消滅＋アイテムドロップ）」を呼ぶ
-        if (sceneRef.current.playDefeatEffect) {
-          sceneRef.current.playDefeatEffect();
-        }
-      } else {
-        // ★ まだHPが残っていれば「ダメージ演出（フラッシュ＋変形＋エフェクト）」を呼ぶ
-        if (sceneRef.current.playDamageEffect) {
-          sceneRef.current.playDamageEffect();
-        }
-      }
-    }
-
-    // 2. スマホを「ブルッ」と振動させる（100ミリ秒）
-    // ※PCブラウザや一部のiOS設定では動作しませんが、エラーにはなりません
-    if (navigator.vibrate) {
-      navigator.vibrate(100);
-    }
-    // ===============================
-  };
-
-  // ★追加：クールダウンのタイマー処理（isCooldownが変化するたびに実行される）
+  // クールダウンのタイマー
   useEffect(() => {
-    if (isCooldown) {
-      // 1秒(1000ミリ秒)後に isCooldown を false に戻す
-      const timer = setTimeout(() => setIsCooldown(false), 1000);
-      // クリーンアップ関数（コンポーネントが消えた時などにタイマーをリセットする）
-      return () => clearTimeout(timer);
-    }
-  }, [isCooldown]);
+    if (!isCooldown) return
+    const timer = setTimeout(() => setIsCooldown(false), COOLDOWN_MS)
+    return () => clearTimeout(timer)
+  }, [isCooldown])
 
-  // ===============================
+  // 魔法を撃つ
+  const handleAttack = () => {
+    if (isCooldown || mp < ATTACK_MP_COST) return
+
+    setMp((prev) => prev - ATTACK_MP_COST)
+    const nextHp = Math.max(enemyHp - ATTACK_DAMAGE, 0)
+    setEnemyHp(nextHp)
+    setIsCooldown(true)
+
+    // フィードバック演出：HP が 0 なら撃破（消滅＋アイテムドロップ）、残っていればダメージ（発光・変形・エフェクト）
+    if (nextHp === 0) sceneRef.current?.playDefeatEffect()
+    else sceneRef.current?.playDamageEffect()
+    navigator.vibrate?.(100) // PC や一部 iOS では動かないがエラーにはならない
+  }
 
   // タップハンドラ内でセンサー権限を要求する（iOS の制約）
   async function handleStart() {
-    const result = await requestPermission();
-    if (result === "denied") return;
+    const result = await requestPermission()
+    if (result === 'denied') return
     // 'unsupported'（PC ブラウザ等）はカメラ確認のため進める
-    setStarted(true); // ArScene のマウント時にカメラ権限が要求される
+    setStarted(true) // ArScene のマウント時にカメラ権限が要求される
+  }
+
+  if (mode === 'tracker') {
+    return <TrackerMode onExit={() => setMode('game')} ar={{ orientationRef, requestPermission }} />
   }
 
   if (!started) {
@@ -84,53 +61,40 @@ function App() {
         <button type="button" onClick={handleStart}>
           冒険をはじめる
         </button>
-        {permission === "denied" && (
-          <p>
-            センサーの使用が拒否されました。設定 › Safari ›
-            モーションと画面の向きのアクセス を確認してください。
-          </p>
+        <button type="button" onClick={() => setMode('tracker')}>
+          見守りモード
+        </button>
+        {permission === 'denied' && (
+          <p>センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。</p>
         )}
-        {permission === "unsupported" && (
-          <p>この端末は向きセンサーに対応していません。</p>
-        )}
+        {permission === 'unsupported' && <p>この端末は向きセンサーに対応していません。</p>}
       </div>
-    );
+    )
   }
 
   return (
     <>
-      {/* ★修正：sceneRef を ArScene に渡してパイプを繋ぐ */}
       <ArScene orientationRef={orientationRef} sceneRef={sceneRef} />
-
-      {/* UIレイヤー：ARの手前にボタンを配置 */}
       <div className="ui-layer">
-        {/* ★追加：画面の左上にステータスを表示する箱（インラインスタイルで簡易的に配置） */}
-        <div
-          style={{
-            position: "absolute",
-            top: "20px",
-            left: "20px",
-            color: "white",
-            background: "rgba(0,0,0,0.5)",
-            padding: "10px",
-            borderRadius: "8px",
-          }}
-        >
-          <p style={{ margin: 0 }}>敵のHP: {enemyHp}</p>
-          <p style={{ margin: 0 }}>MP: {mp}</p>
+        {/* 実機検証用リモコン。本番では外す */}
+        {/* <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} /> */}
+
+        <div className="battle-status">
+          <p>敵のHP: {enemyHp}</p>
+          <p>MP: {mp}</p>
         </div>
 
-        {/* ★修正：onClickをhandleAttackに変更し、disabled属性でボタンを無効化できるようにする */}
         <button
+          type="button"
           className="attack-button"
           onClick={handleAttack}
-          disabled={isCooldown || mp < 10}
+          disabled={isCooldown || mp < ATTACK_MP_COST}
         >
-          {isCooldown ? "チャージ中..." : "魔法を撃つ (MP-10)"}
+          {isCooldown ? 'チャージ中...' : `魔法を撃つ (MP-${ATTACK_MP_COST})`}
         </button>
       </div>
     </>
-  );
+  )
 }
 
-export default App;
+export default App

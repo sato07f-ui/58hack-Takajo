@@ -1,27 +1,35 @@
-import * as THREE from "three";
-import { createHitEffect, updateHitEffects } from "./hitEffect";
-// ★ 追加: itemDrop.js から関数をインポート
-import { spawnItem, updateItems, clearItems } from "./itemDrop";
+import * as THREE from 'three'
+import { loadEnemyModel } from '../enemy/loadEnemyModel'
+import { createHitEffect, updateHitEffects } from './hitEffect'
+import { spawnItem, updateItems, clearItems } from './itemDrop'
 
-const _zee = new THREE.Vector3(0, 0, 1);
-const _euler = new THREE.Euler();
-const _q0 = new THREE.Quaternion();
-const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // X 軸 -90° 補正
-const DEG = Math.PI / 180;
+const _zee = new THREE.Vector3(0, 0, 1)
+const _euler = new THREE.Euler()
+const _q0 = new THREE.Quaternion()
+const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸 -90° 補正
+const DEG = Math.PI / 180
+
+const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
+const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
+const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
+const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
+const _raycaster = new THREE.Raycaster()
+const _ndc = new THREE.Vector2()
+const _box = new THREE.Box3()
+const _size = new THREE.Vector3()
+const _white = new THREE.Color(0xffffff)
+const _black = new THREE.Color(0x000000)
+const _hitPos = new THREE.Vector3()
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
  * screenAngle: screen.orientation.angle（度）
  */
-export function applyDeviceOrientation(
-  camera,
-  { alpha, beta, gamma },
-  screenAngle = 0,
-) {
-  _euler.set(beta * DEG, alpha * DEG, -gamma * DEG, "YXZ");
-  camera.quaternion.setFromEuler(_euler);
-  camera.quaternion.multiply(_q1); // 端末を「立てて持つ」姿勢を正面にする
-  camera.quaternion.multiply(_q0.setFromAxisAngle(_zee, -screenAngle * DEG)); // 画面回転の補正
+export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAngle = 0) {
+  _euler.set(beta * DEG, alpha * DEG, -gamma * DEG, 'YXZ')
+  camera.quaternion.setFromEuler(_euler)
+  camera.quaternion.multiply(_q1) // 端末を「立てて持つ」姿勢を正面にする
+  camera.quaternion.multiply(_q0.setFromAxisAngle(_zee, -screenAngle * DEG)) // 画面回転の補正
 }
 
 /**
@@ -32,180 +40,186 @@ export function applyDeviceOrientation(
 export const createScene = (canvas, { onFrame } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    alpha: true,
+    alpha: true, //背景を透明にしてカメラ映像を透かす
     antialias: true,
-  });
-  renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); //GPU 負荷対策
+  })
+  renderer.setClearColor(0x000000, 0) //透明クリア
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)) //GPU 負荷対策
 
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
-  // ★ 追加: PCでセンサーがなくてもキューブが見えるように、カメラを少し上に設定
-  camera.position.set(0, 0, 0); //カメラの座標を原点固定（後で変更可能）
-  camera.lookAt(0, -0.3, -2); // キューブの方向を向かせる
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100)
+  camera.position.set(0, 0, 0) //カメラの座標を原点固定（後で変更可能）
 
-  //テスト用オブジェクト
-  const testCube = new THREE.Mesh(
-    new THREE.BoxGeometry(0.4, 0.4, 0.4),
-    new THREE.MeshStandardMaterial({ color: 0xff5533 }),
-  );
-  const CUBE_HOME = new THREE.Vector3(0, -0.3, -2);
-  testCube.position.copy(CUBE_HOME);
-  scene.add(testCube);
+  // 照明: 全体を底上げする環境光 + 空/地面の色味 + カメラ側から当てる光
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8))
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.2))
+  // カメラの子にして、端末をどちらに向けても敵の正面（プレイヤー側）が明るくなるようにする
+  const frontLight = new THREE.DirectionalLight(0xffffff, 1.6)
+  frontLight.position.set(0.5, 1, 0) // カメラから見て右上
+  frontLight.target.position.set(0, 0, -1) // カメラの正面方向を照らす
+  camera.add(frontLight, frontLight.target)
+  scene.add(camera) // カメラの子の光を描画に含めるため
 
-  /** キューブを相対移動する（デバッグ用リモコンから呼ぶ） */
-  const moveCube = (dx = 0, dy = 0, dz = 0) => {
-    testCube.position.x += dx;
-    testCube.position.y += dy;
-    testCube.position.z += dz;
-  };
-  const resetCube = () => testCube.position.copy(CUBE_HOME);
+  const enemies = []
+  let rafId = 0
+  let running = true
+  let damageTimer = 0
+  let squashTimer = 0
+  let isDefeated = false // 撃破演出中（縮んで消える途中）か
 
-  // ===============================
-  // ★ 追加: ゲーム状態の管理変数
-  // ===============================
-  let projectiles = []; // 飛翔中の魔法弾
-  let isDefeated = false; // 撃破状態フラグ
-  let itemSpawned = false; // ★追加: 二重スポーン防止フラグ
+  /**
+   * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
+   * enemy: ENEMIES の要素
+   */
+  const spawnEnemy = async (enemy, screenX, screenY) => {
+    // 画面座標 → Three.js カメラからのレイ → レイ上の点
+    _ndc.set((screenX / window.innerWidth) * 2 - 1, -(screenY / window.innerHeight) * 2 + 1)
+    camera.updateMatrixWorld()
+    _raycaster.setFromCamera(_ndc, camera)
+    const center = _raycaster.ray.at(SPAWN_DISTANCE, new THREE.Vector3())
 
-  // ===============================
-  // ★ 変更: ダメージ演出（エフェクト呼び出し追加）
-  // ===============================
-  const playDamageEffect = (hitPosition) => {
-    // 1. キューブを真っ白（発光）にする
-    testCube.material.color.setHex(0xffffff);
+    const model = await loadEnemyModel(enemy.modelUrl)
+    if (!running) return null // 読み込み中に dispose された
 
-    // 2. 0.15秒後に元の色(0xff5533)に戻す
-    setTimeout(() => {
-      // running（描画ループ中）の時だけ色を戻す（エラー防止）
-      if (running) {
-        testCube.material.color.setHex(0xff5533);
-      }
-    }, 150);
+    // clone() はマテリアルを共有するので、この個体だけ色を変えられるよう複製する
+    model.traverse((obj) => {
+      if (obj.material) obj.material = obj.material.clone()
+    })
 
-    // 3. キューブを揺らす（潰す変形）
-    testCube.scale.set(1.3, 0.8, 1.3);
-    setTimeout(() => {
-      if (running && !isDefeated) testCube.scale.set(1, 1, 1);
-    }, 100);
+    // 表示サイズを enemy.height [m] に揃える
+    _box.setFromObject(model).getSize(_size)
+    model.scale.setScalar(enemy.height / _size.y)
 
-    // 4. hitEffect.jsのエフェクトを発生させる
-    const targetPos = hitPosition || testCube.position;
-    createHitEffect(scene, camera, targetPos);
-  };
+    // 原点が足元なので、モデルの中心がレイ上の点に来るよう半分下げる
+    model.position.set(center.x, center.y - enemy.height / 2, center.z)
+    // 顔（+Z）をカメラに向ける。水平方向だけ回して傾かないようにする
+    model.lookAt(camera.position.x, model.position.y, camera.position.z)
 
-  // ===============================
-  // ★ 追加: 魔法の発射関数
-  // ===============================
-  const shootMagic = (onHitCallback) => {
-    const projGeom = new THREE.SphereGeometry(0.1, 16, 16);
-    const projMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
-    const projectile = new THREE.Mesh(projGeom, projMat);
+    model.userData.enemy = enemy
+    model.userData.baseScale = model.scale.x // 変形・撃破演出で元の大きさに戻すため
+    isDefeated = false
+    scene.add(model)
+    enemies.push(model)
+    return model
+  }
 
-    // ARなので「現在のカメラの位置・向き」を基準に、手前・少し下から発射させる
-    projectile.position.copy(camera.position);
-    projectile.translateY(-0.3); // カメラより少し下
-    projectile.translateZ(-0.5); // カメラより少し前
+  /** 出ている敵を全て消す */
+  const clearEnemies = () => {
+    for (const model of enemies) {
+      scene.remove(model)
+      model.traverse((obj) => {
+        obj.geometry?.dispose()
+        obj.material?.dispose()
+      })
+    }
+    enemies.length = 0
+  }
 
-    scene.add(projectile);
+  /** 出ている敵全員の emissive を color にする */
+  const setEnemiesEmissive = (color) => {
+    for (const model of enemies) {
+      model.traverse((obj) => {
+        obj.material?.emissive?.copy(color)
+      })
+    }
+  }
 
-    projectiles.push({
-      mesh: projectile,
-      target: testCube,
-      onHit: onHitCallback,
-    });
-  };
+  /** 出ている敵全員を、元の大きさに対して (x, y, z) 倍にする */
+  const setEnemiesScale = (x, y, z) => {
+    for (const model of enemies) {
+      const base = model.userData.baseScale
+      model.scale.set(base * x, base * y, base * z)
+    }
+  }
 
-  // ===============================
-  // ★ 追加: 撃破演出関数
-  // ===============================
+  /** ダメージを受けた演出：出ている敵を一瞬白く光らせ、潰し、ヒットエフェクトを出す */
+  const playDamageEffect = () => {
+    if (isDefeated) return
+
+    setEnemiesEmissive(_white)
+    clearTimeout(damageTimer)
+    damageTimer = setTimeout(() => {
+      if (running) setEnemiesEmissive(_black)
+    }, DAMAGE_FLASH_MS)
+
+    setEnemiesScale(1.3, 0.8, 1.3)
+    clearTimeout(squashTimer)
+    squashTimer = setTimeout(() => {
+      if (running && !isDefeated) setEnemiesScale(1, 1, 1)
+    }, DAMAGE_SQUASH_MS)
+
+    // 原点が足元なので、エフェクトは体の中心に出す
+    for (const model of enemies) {
+      _hitPos.copy(model.position)
+      _hitPos.y += model.userData.enemy.height / 2
+      createHitEffect(scene, camera, _hitPos)
+    }
+  }
+
+  /** 撃破演出：出ている敵を回転しながら縮ませ、消えたらアイテムを落とす（処理は loop 内） */
   const playDefeatEffect = () => {
-    isDefeated = true;
-  };
+    if (enemies.length === 0) return
+    clearTimeout(squashTimer)
+    isDefeated = true
+  }
+
+  /** 撃破演出を 1 フレーム進める */
+  const updateDefeat = () => {
+    if (!isDefeated) return
+    for (const model of enemies) {
+      model.rotation.y += 0.1
+      model.scale.multiplyScalar(0.9)
+    }
+    if (enemies[0].scale.x > enemies[0].userData.baseScale * DEFEAT_MIN_SCALE) return
+
+    // 消えきったら、体の中心があった位置にアイテムを落とす
+    for (const model of enemies) {
+      _hitPos.copy(model.position)
+      _hitPos.y += model.userData.enemy.height / 2
+      spawnItem(scene, _hitPos)
+    }
+    clearEnemies()
+    isDefeated = false
+  }
 
   const resize = () => {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  };
-  resize();
-  window.addEventListener("resize", resize);
+    const w = window.innerWidth
+    const h = window.innerHeight
+    renderer.setSize(w, h, false)
+    camera.aspect = w / h
+    camera.updateProjectionMatrix()
+  }
+  resize()
+  window.addEventListener('resize', resize)
 
-  // ===============================
-  // ★ 変更: アニメーションループ（飛翔・撃破・エフェクト更新）
-  // ===============================
-
-  let rafId = 0;
-  let running = true;
   const loop = () => {
-    if (!running) return;
-    onFrame?.(camera);
-
-    // 1. キューブのアニメーション（通常 or 撃破時）
-    if (!isDefeated) {
-      testCube.rotation.y += 0.01;
-    } else {
-      testCube.rotation.x += 0.1;
-      testCube.rotation.y += 0.1;
-      if (testCube.scale.x > 0.05) {
-        testCube.scale.multiplyScalar(0.9);
-      } else {
-        testCube.visible = false;
-
-        // ★追加: 敵が消えきった瞬間にアイテムを生成
-        if (!itemSpawned) {
-          spawnItem(scene, testCube.position);
-          itemSpawned = true;
-        }
-      }
-    }
-
-    // 2. 魔法弾の追尾＆着弾判定
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-      const proj = projectiles[i];
-      proj.mesh.position.lerp(proj.target.position, 0.15); // 対象へ滑らかに移動
-
-      // 着弾判定（キューブサイズが 0.4 なので、距離 0.3 以下でヒットとする）
-      if (proj.mesh.position.distanceTo(proj.target.position) < 0.3) {
-        scene.remove(proj.mesh);
-        proj.mesh.geometry.dispose();
-        proj.mesh.material.dispose();
-        projectiles.splice(i, 1);
-
-        playDamageEffect(proj.mesh.position);
-        if (proj.onHit) proj.onHit(); // App.jsx側のHP減算を実行
-      }
-    }
-
-    // 3. hitEffect.js のエフェクトアニメーションを更新
-    updateHitEffects();
-    updateItems(); // ★追加: アイテムの浮遊・回転アニメーション更新
-
-    renderer.render(scene, camera);
-    rafId = requestAnimationFrame(loop);
-  };
-  loop();
+    if (!running) return
+    onFrame?.(camera)
+    updateDefeat()
+    updateHitEffects()
+    updateItems()
+    renderer.render(scene, camera)
+    rafId = requestAnimationFrame(loop)
+  }
+  loop()
 
   return {
     scene,
     camera,
     renderer,
-    moveCube,
-    resetCube,
-    playDamageEffect, // ★追加：App.jsxから呼び出せるように公開する
-    shootMagic, // ★ 追加: App.jsxから呼べるようにする
-    playDefeatEffect, // ★ 追加: App.jsxから呼べるようにする
+    spawnEnemy,
+    clearEnemies,
+    playDamageEffect,
+    playDefeatEffect,
     dispose() {
-      running = false;
-      cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", resize);
-      testCube.geometry.dispose();
-      testCube.material.dispose();
-      clearItems(); // ★追加: アイテムのメモリ解放
-      renderer.dispose();
+      running = false
+      cancelAnimationFrame(rafId)
+      clearTimeout(damageTimer)
+      clearTimeout(squashTimer)
+      window.removeEventListener('resize', resize)
+      clearEnemies()
+      clearItems()
+      renderer.dispose()
     },
-  };
-};
+  }
+}
