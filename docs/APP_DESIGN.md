@@ -85,14 +85,24 @@
 # ゲーム仕様
 
 ## 食材 → 敵の対応表
-| 食材 | 敵の名前 | 特徴・属性 |
-|------|----------|-----------|
-| ここに記入 | ここに記入 | ここに記入 |
+定義は `src/utils/enemy/enemies.js`（`ENEMIES`）。ドロップアイテムは `src/utils/item/items.js`（`ITEMS`）。
+
+| 食材 | 敵の名前 | 出現方法 | 特徴・属性 | ドロップアイテム |
+|------|----------|----------|-----------|------------------|
+| にんじん | にんじん | 画像認識（`carrot.mind`） | ここに記入 | にんじんソード（`carrot-sword`） |
+| ピーマン | ピーマン | 画像認識（`greenpepper.mind`） | ここに記入 | なし |
+| ほうれん草 | ほうれん草 | 画像認識（`spinach.mind` 未作成） | ここに記入 | なし |
+| バナナ | バナナ | 物体認識（COCO-SSD `banana`） | ここに記入 | バナナブーメラン（`banana-boomerang`） |
+
+ポーション（`potion`）は登録済みだが、まだどの敵にも割り当てていない。
 
 ## 3Dモデル
 - 入手先（自作 / 無料アセット / AI生成）: ここに記入
-- 形式（glb / gltf / fbx など）: ここに記入
-- 格納場所（例: `public/models/`）: ここに記入
+- 形式: glb
+- 格納場所: `src/assets/*.glb`（Vite の `?url` import で読み込む）
+  - 敵: `carrot.glb`, `greenpepper.glb`, `spinach.glb`（バナナは未作成で仮モデル）
+  - アイテム: `banana_boomerang.glb`, `carrot_sword.glb`, `potion.glb`
+- 原点はいずれも足元（min.y = 0）。表示サイズは `height` [m] に揃えるので実寸は問わないが、平たいモデルは `height` を小さめにする
 
 ## 魔法の種類
 | 魔法名 | 属性 | ダメージ | 消費コスト | 演出 |

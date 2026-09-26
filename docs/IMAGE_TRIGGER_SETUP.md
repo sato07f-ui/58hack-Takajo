@@ -116,7 +116,7 @@ src/
   utils/
     ar/
       ArScene.jsx             ← 変更: 画像トリガーをつなぎ、検出したら敵を出す
-      createScene.js          ← 変更: spawnEnemy / clearEnemies を追加
+      createScene.js          ← 変更: spawnEnemy / clearEnemy を追加
       useCamera.js              （変更なし）
       useDeviceOrientation.js   （変更なし）
     imageTrigger/             ← 新規: 画像認識（トリガー）
@@ -643,6 +643,6 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
 ---
 
 ## 11. 次のステップ（本書の範囲外）
-- **戦闘との接続**: `onEnemySpawn(enemy)` でゲームロジックに敵の出現を知らせ、HP などの状態を持たせる。倒したら `clearEnemies()` → `rescan()` で次の敵を探す
+- **戦闘との接続**: `onEnemySpawn(enemy)` でゲームロジックに敵の出現を知らせ、HP などの状態を持たせる。倒すと撃破演出のあとに `onDefeat(enemy, item)` が呼ばれ、敵の足元にドロップアイテム（`enemy.drop` → `src/utils/item/items.js`）が出る。ドロップは `clearEnemy()`（または次の `spawnEnemy`）で敵と一緒に消える。次の敵を探すなら `clearEnemy()` → `rescan()`
 - **タップ判定**: `THREE.Raycaster` で画面タップ位置から敵（`userData.enemy`）を判定する（[AR_SETUP.md](AR_SETUP.md) 9 章）
 - **出現演出**: `spawnEnemy` の中でスケールを 0 から 1 へアニメーションさせる

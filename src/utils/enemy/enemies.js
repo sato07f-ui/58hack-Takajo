@@ -13,7 +13,7 @@ import spinachUrl from '../../assets/spinach.glb?url'
  * drop: 倒したときに出るアイテムの id（src/utils/item/items.js）。null なら何も落とさない
  */
 export const ENEMIES = [
-  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3, drop: null },
+  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3, drop: 'carrot-sword' },
   { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.25, drop: null },
   { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: '/targets/spinach.mind', height: 0.35, drop: null }, // .mind 未作成
   // 特別な敵: 本物のバナナを COCO-SSD で検出して出す（3D モデルは未作成なので仮モデル）

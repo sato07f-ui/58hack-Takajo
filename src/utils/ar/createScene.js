@@ -153,8 +153,10 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
     if (!running || !model) return null // 読み込み中に dispose された、または modelUrl が無い
     prepareModel(model, item.height)
 
+    // 敵と同じく足元を position に置く。原点が中心にあるモデルでも足元が揃うよう最下点分だけ持ち上げる
+    _box.setFromObject(model)
     model.position.copy(position)
-    model.position.y += DROP_FLOAT_Y
+    model.position.y += DROP_FLOAT_Y - _box.min.y
     model.userData.item = item
 
     clearDrop()
