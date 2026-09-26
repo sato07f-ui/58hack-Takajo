@@ -20,13 +20,20 @@ const BANANA = ENEMIES.find((enemy) => enemy.id === 'banana')
  * props.sceneRef: createScene() の戻り値を親に渡すための ref（任意）
  * props.onEnemySpawn(enemy): 敵が出現したときに呼ばれる（任意。ゲームロジックへの通知用）。
  *   画像認識の敵（にんじん等）も物体認識の敵（バナナ）も、同じようにここへ通知される
+ * props.onDefeat(enemy, item): 撃破演出が終わって敵が消えたときに呼ばれる（任意）。
+ *   item はドロップしたアイテム。何も落とさない敵なら null
  */
-export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
+export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onDefeat }) {
   const { videoRef, status, error } = useCamera(true)
   const canvasRef = useRef(null)
   const localSceneRef = useRef(null) // 親が sceneRef を渡さなくても内部で使う
   // 画像認識と物体認識のどちらかで敵が見つかったら true。同時に見つかっても敵は 1 体だけ出す
   const foundRef = useRef(false)
+  // 親が毎レンダー新しい関数を渡してもシーンを作り直さないよう ref で持つ
+  const onDefeatRef = useRef(onDefeat)
+  useEffect(() => {
+    onDefeatRef.current = onDefeat
+  }, [onDefeat])
 
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
@@ -35,6 +42,9 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
         if (!orientationRef.current) return
         const angle = screen.orientation?.angle ?? window.orientation ?? 0
         applyDeviceOrientation(camera, orientationRef.current, angle)
+      },
+      onDefeat(enemy, item) {
+        onDefeatRef.current?.(enemy, item)
       },
     })
     localSceneRef.current = scene

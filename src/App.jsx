@@ -19,6 +19,9 @@ function App() {
   const [enemyHp, setEnemyHp] = useState(100)
   const [mp, setMp] = useState(50)
   const [isCooldown, setIsCooldown] = useState(false)
+  const [currentEnemy, setCurrentEnemy] = useState(null) // 出ている敵（ENEMIES の要素）
+  const [droppedItem, setDroppedItem] = useState(null) // 倒した敵が落としたアイテム（ITEMS の要素）
+  const defeatedRef = useRef(false) // playDefeatEffect を 1 回だけ呼ぶため
 
   // クールダウンのタイマー
   useEffect(() => {
@@ -27,17 +30,25 @@ function App() {
     return () => clearTimeout(timer)
   }, [isCooldown])
 
-  // 魔法を撃つ
+  // HP が 0 になったら撃破演出を 1 回だけ始める（ドロップは createScene 側が演出後に出す）
+  useEffect(() => {
+    if (enemyHp > 0 || defeatedRef.current) return
+    defeatedRef.current = true
+    sceneRef.current?.playDefeatEffect()
+  }, [enemyHp])
+
+  // 魔法を撃つ。HP 減算と光る演出は魔法弾が着弾した瞬間に行う
   const handleAttack = () => {
     if (isCooldown || mp < ATTACK_MP_COST) return
 
-    setMp((prev) => prev - ATTACK_MP_COST)
-    setEnemyHp((prev) => Math.max(prev - ATTACK_DAMAGE, 0))
-    setIsCooldown(true)
+    const fired = sceneRef.current?.shootMagic(() => {
+      setEnemyHp((prev) => Math.max(prev - ATTACK_DAMAGE, 0))
+      navigator.vibrate?.(100) // PC や一部 iOS では動かないがエラーにはならない
+    })
+    if (!fired) return // 敵がいない、または撃破演出中は MP を消費しない
 
-    // ヒット時のフィードバック演出：敵を光らせて端末を振動させる
-    sceneRef.current?.playDamageEffect()
-    navigator.vibrate?.(100) // PC や一部 iOS では動かないがエラーにはならない
+    setMp((prev) => prev - ATTACK_MP_COST)
+    setIsCooldown(true)
   }
 
   // タップハンドラ内でセンサー権限を要求する（iOS の制約）
@@ -72,14 +83,21 @@ function App() {
 
   return (
     <>
-      <ArScene orientationRef={orientationRef} sceneRef={sceneRef} />
+      <ArScene
+        orientationRef={orientationRef}
+        sceneRef={sceneRef}
+        onEnemySpawn={setCurrentEnemy}
+        onDefeat={(enemy, item) => setDroppedItem(item)}
+      />
       <div className="ui-layer">
         {/* 実機検証用リモコン。本番では外す */}
         {/* <DebugRemote sceneRef={sceneRef} orientationRef={orientationRef} permission={permission} /> */}
 
         <div className="battle-status">
+          {currentEnemy && <p>敵: {currentEnemy.name}</p>}
           <p>敵のHP: {enemyHp}</p>
           <p>MP: {mp}</p>
+          {droppedItem && <p>{droppedItem.name} を手に入れた！</p>}
         </div>
 
         <button

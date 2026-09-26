@@ -218,11 +218,12 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
 
   /**
    * 魔法弾を撃つ。カメラの少し下・前から出て、出ている敵へ飛んでいく。
-   * 着弾したら playDamageEffect と onHit() を呼ぶ。敵がいなければ何もしない
+   * 着弾したら playDamageEffect と onHit() を呼ぶ。
+   * 敵がいない・撃破演出中なら何もせず false を返す。撃てたら true
    */
   const shootMagic = (onHit) => {
     const target = enemyModel
-    if (!target || isDefeated) return
+    if (!target || isDefeated) return false
 
     const projectile = new THREE.Mesh(
       new THREE.SphereGeometry(0.03, 16, 16),
@@ -236,6 +237,7 @@ export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
 
     scene.add(projectile)
     projectiles.push({ mesh: projectile, target, onHit })
+    return true
   }
 
   /** 撃破演出を開始する。以降、敵は回転しながら縮んで消える */
