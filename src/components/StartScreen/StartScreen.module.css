@@ -130,3 +130,24 @@
   border-radius: 0.5rem;
   cursor: pointer;
 }
+
+/* 見守りモードへのボタン（TAP TO START の下に控えめに出す） */
+.trackerButton {
+  margin-top: 1rem;
+  padding: 0.5rem 1.5rem;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 2rem;
+  cursor: pointer;
+}
+
+/* あそびかたの中に出すお知らせ（センサー権限が拒否されたときなど） */
+.notice {
+  margin: 1rem 0 0;
+  font-size: 0.9rem;
+  color: #c62828;
+  text-align: left;
+}

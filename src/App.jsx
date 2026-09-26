@@ -3,6 +3,7 @@ import { ArScene } from './utils/ar/ArScene'
 //import { DebugRemote } from './utils/ar/DebugRemote'
 import { useDeviceOrientation } from './utils/ar/useDeviceOrientation'
 import { TrackerMode } from './components/tracker/TrackerMode'
+import { StartScreen } from './components/StartScreen/StartScreen'
 import { ITEMS } from './utils/item/items'
 import './App.css'
 
@@ -85,19 +86,15 @@ function App() {
 
   if (!started) {
     return (
-      <div className="start-screen">
-        <h1>スーパーダンジョン</h1>
-        <button type="button" onClick={handleStart}>
-          冒険をはじめる
-        </button>
-        <button type="button" onClick={() => setMode('tracker')}>
-          見守りモード
-        </button>
-        {permission === 'denied' && (
-          <p>センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。</p>
-        )}
-        {permission === 'unsupported' && <p>この端末は向きセンサーに対応していません。</p>}
-      </div>
+      <StartScreen
+        onStart={handleStart}
+        onOpenTracker={() => setMode('tracker')}
+        notice={
+          permission === 'denied'
+            ? 'センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。'
+            : null
+        }
+      />
     )
   }
 
