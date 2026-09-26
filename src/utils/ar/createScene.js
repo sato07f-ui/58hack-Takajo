@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { createHitEffect, updateHitEffects } from './hitEffect'
+import { spawnItem, updateItems, clearItems } from './itemDrop'
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -10,9 +11,8 @@ const DEG = Math.PI / 180
 
 const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
-const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れる時間
-const PROJECTILE_HIT_DISTANCE = 0.15 // 魔法弾がこの距離 [m] まで近づいたら着弾
-const PROJECTILE_LERP = 0.15 // 魔法弾が毎フレーム敵へ寄る割合
+const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
+const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
@@ -20,6 +20,7 @@ const _size = new THREE.Vector3()
 const _center = new THREE.Vector3()
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
+const _hitPos = new THREE.Vector3()
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
@@ -66,10 +67,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
   let running = true
   let damageTimer = 0
   let squashTimer = 0
-  let isDefeated = false // 撃破演出中なら true
-
-  /** モデルの中心（ワールド座標）を out に入れて返す */
-  const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
+  let isDefeated = false // 撃破演出中（縮んで消える途中）か
 
   /**
    * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
@@ -101,6 +99,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     model.lookAt(camera.position.x, model.position.y, camera.position.z)
 
     model.userData.enemy = enemy
+    model.userData.baseScale = model.scale.x // 変形・撃破演出で元の大きさに戻すため
+    isDefeated = false
     scene.add(model)
     enemies.push(model)
     return model
@@ -139,66 +139,62 @@ export const createScene = (canvas, { onFrame } = {}) => {
     }
   }
 
-  /** 出ている敵全員の scale を基準の (sx, sy, sz) 倍にする */
-  const setEnemiesSquash = (sx, sy, sz) => {
+  /** 出ている敵全員を、元の大きさに対して (x, y, z) 倍にする */
+  const setEnemiesScale = (x, y, z) => {
     for (const model of enemies) {
-      const base = model.userData.baseScale ?? 1
-      model.scale.set(base * sx, base * sy, base * sz)
+      const base = model.userData.baseScale
+      model.scale.set(base * x, base * y, base * z)
     }
   }
 
-  /**
-   * ダメージを受けた演出：敵を一瞬白く光らせ、潰して戻し、リングと粒子を出す。
-   * hitPosition を省略すると各敵の中心にエフェクトを出す
-   */
-  const playDamageEffect = (hitPosition) => {
+  /** ダメージを受けた演出：出ている敵を一瞬白く光らせ、潰し、ヒットエフェクトを出す */
+  const playDamageEffect = () => {
+    if (isDefeated) return
+
     setEnemiesEmissive(_white)
     clearTimeout(damageTimer)
     damageTimer = setTimeout(() => {
       if (running) setEnemiesEmissive(_black)
     }, DAMAGE_FLASH_MS)
 
-    if (!isDefeated) {
-      setEnemiesSquash(1.3, 0.8, 1.3)
-      clearTimeout(squashTimer)
-      squashTimer = setTimeout(() => {
-        if (running && !isDefeated) setEnemiesSquash(1, 1, 1)
-      }, DAMAGE_SQUASH_MS)
-    }
+    setEnemiesScale(1.3, 0.8, 1.3)
+    clearTimeout(squashTimer)
+    squashTimer = setTimeout(() => {
+      if (running && !isDefeated) setEnemiesScale(1, 1, 1)
+    }, DAMAGE_SQUASH_MS)
 
-    if (hitPosition) {
-      createHitEffect(scene, camera, hitPosition)
-    } else {
-      for (const model of enemies) createHitEffect(scene, camera, centerOf(model, _center))
+    // 原点が足元なので、エフェクトは体の中心に出す
+    for (const model of enemies) {
+      _hitPos.copy(model.position)
+      _hitPos.y += model.userData.enemy.height / 2
+      createHitEffect(scene, camera, _hitPos)
     }
   }
 
-  /**
-   * 魔法弾を撃つ。カメラの少し下・前から出て、一番手前の敵へ飛んでいく。
-   * 着弾したら playDamageEffect と onHit() を呼ぶ。敵がいなければ何もしない
-   */
-  const shootMagic = (onHit) => {
-    const target = enemies[0]
-    if (!target || isDefeated) return
-
-    const projectile = new THREE.Mesh(
-      new THREE.SphereGeometry(0.03, 16, 16),
-      new THREE.MeshBasicMaterial({ color: 0x00ffff }),
-    )
-    // AR なので「現在のカメラの位置・向き」を基準に、手前・少し下から発射させる
-    projectile.position.copy(camera.position)
-    projectile.quaternion.copy(camera.quaternion)
-    projectile.translateY(-0.1)
-    projectile.translateZ(-0.1)
-
-    scene.add(projectile)
-    projectiles.push({ mesh: projectile, target, onHit })
-  }
-
-  /** 撃破演出を開始する。以降、敵は回転しながら縮んで消える */
+  /** 撃破演出：出ている敵を回転しながら縮ませ、消えたらアイテムを落とす（処理は loop 内） */
   const playDefeatEffect = () => {
+    if (enemies.length === 0) return
+    clearTimeout(squashTimer)
     isDefeated = true
-    clearProjectiles()
+  }
+
+  /** 撃破演出を 1 フレーム進める */
+  const updateDefeat = () => {
+    if (!isDefeated) return
+    for (const model of enemies) {
+      model.rotation.y += 0.1
+      model.scale.multiplyScalar(0.9)
+    }
+    if (enemies[0].scale.x > enemies[0].userData.baseScale * DEFEAT_MIN_SCALE) return
+
+    // 消えきったら、体の中心があった位置にアイテムを落とす
+    for (const model of enemies) {
+      _hitPos.copy(model.position)
+      _hitPos.y += model.userData.enemy.height / 2
+      spawnItem(scene, _hitPos)
+    }
+    clearEnemies()
+    isDefeated = false
   }
 
   const resize = () => {
@@ -214,40 +210,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
   const loop = () => {
     if (!running) return
     onFrame?.(camera)
-
-    // 1. 撃破演出：回転しながら縮み、十分小さくなったら非表示にする
-    if (isDefeated) {
-      for (const model of enemies) {
-        model.rotation.x += 0.1
-        model.rotation.y += 0.1
-        if (model.scale.x > (model.userData.baseScale ?? 1) * 0.05) {
-          model.scale.multiplyScalar(0.9)
-        } else {
-          model.visible = false
-        }
-      }
-    }
-
-    // 2. 魔法弾の追尾と着弾判定
-    for (let i = projectiles.length - 1; i >= 0; i--) {
-      const proj = projectiles[i]
-      centerOf(proj.target, _center)
-      proj.mesh.position.lerp(_center, PROJECTILE_LERP)
-
-      if (proj.mesh.position.distanceTo(_center) < PROJECTILE_HIT_DISTANCE) {
-        scene.remove(proj.mesh)
-        proj.mesh.geometry.dispose()
-        proj.mesh.material.dispose()
-        projectiles.splice(i, 1)
-
-        playDamageEffect(proj.mesh.position)
-        proj.onHit?.() // App.jsx 側の HP 減算など
-      }
-    }
-
-    // 3. hitEffect.js のリング・粒子を進める
+    updateDefeat()
     updateHitEffects()
-
+    updateItems()
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
   }
@@ -260,7 +225,6 @@ export const createScene = (canvas, { onFrame } = {}) => {
     spawnEnemy,
     clearEnemies,
     playDamageEffect,
-    shootMagic,
     playDefeatEffect,
     dispose() {
       running = false
@@ -269,6 +233,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
       clearTimeout(squashTimer)
       window.removeEventListener('resize', resize)
       clearEnemies()
+      clearItems()
       renderer.dispose()
     },
   }
