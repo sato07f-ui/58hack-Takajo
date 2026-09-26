@@ -3,6 +3,7 @@ import { ArScene } from '../../utils/ar/ArScene'
 import { useGeolocation } from '../../utils/tracker/useGeolocation'
 import { useLocationChannel } from '../../utils/tracker/useLocationChannel'
 import { useEscapeState } from '../../utils/tracker/useEscapeState'
+import { useWakeLock } from '../../utils/tracker/useWakeLock'
 import { isValidRoomCode, normalizeRoomCode } from '../../utils/tracker/roomCode'
 import { distanceLevel, formatDistance } from '../../utils/tracker/distanceLevel'
 import { DistanceDisplay } from './DistanceDisplay'
@@ -25,6 +26,7 @@ export function ChildView({ onBack, ar }) {
   const channel = useLocationChannel({ roomCode, role: 'child' })
   const { status, sendLocation } = channel
   const escape = useEscapeState({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
+  const wakeLock = useWakeLock()
 
   // 自分の位置が更新されたら親に送る
   useEffect(() => {
@@ -35,6 +37,7 @@ export function ChildView({ onBack, ar }) {
     e.preventDefault()
     if (!isValidRoomCode(input)) return
     geo.start() // タップ内で呼ぶ（iOS）
+    wakeLock.request() // 画面スリープで送信が止まらないようにする（タップ内で呼ぶ）
     setRoomCode(normalizeRoomCode(input))
     setInput('') // 接続後はコードを画面に残さない
   }
@@ -51,6 +54,7 @@ export function ChildView({ onBack, ar }) {
 
   function handleStop() {
     geo.stop()
+    wakeLock.release()
     setInDungeon(false)
     setRoomCode('')
   }
@@ -86,7 +90,7 @@ export function ChildView({ onBack, ar }) {
         <ArScene orientationRef={ar.orientationRef} />
         <div className="ui-layer">
           <div className={`distance-hud distance-${level}`}>親まで {formatDistance(escape.distance)}</div>
-          {escape.state === 'escaped' && <EscapedScreen distance={escape.distance} />}
+          {escape.state === 'escaped' && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
           {escape.justRevived && <RevivedBanner />}
         </div>
       </>
@@ -107,7 +111,11 @@ export function ChildView({ onBack, ar }) {
           センサーの使用が拒否されました。設定 › Safari › モーションと画面の向きのアクセス を確認してください。
         </p>
       )}
-      <p className="tracker-note">画面を開いたままにしてね（閉じると親に位置が届かなくなります）</p>
+      <p className="tracker-note">
+        {wakeLock.active
+          ? '画面が消えないようにしています。アプリを閉じると親に位置が届かなくなります'
+          : '画面を開いたままにしてね（画面が消えると親に位置が届かなくなります）'}
+      </p>
       <button type="button" className="tracker-link" onClick={handleStop}>
         終了する
       </button>

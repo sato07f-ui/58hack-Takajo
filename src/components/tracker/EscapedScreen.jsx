@@ -12,13 +12,15 @@ const intensity = (distance) => {
 /**
  * 脱出中の子供に重ねる全画面オーバーレイ。下のゲームへのタップを塞ぐ。
  * props.distance: 親までの距離 [m] | null
+ * props.reason: 'distance' | 'stale'（通信途絶）
  */
-export function EscapedScreen({ distance }) {
+export function EscapedScreen({ distance, reason }) {
   const level = intensity(distance)
   return (
     <div className={`escaped-screen escaped-${level}`} role="alert">
       <p className="escaped-title">ダンジョンから脱出してしまった！</p>
       <p className="escaped-lead">親に近づいて復活の鍵を手に入れよう</p>
+      {reason === 'stale' && <p className="escaped-note">親との通信が途切れています。電波のよい場所で画面を開いたまま待ってね</p>}
       <p className="escaped-distance">{formatDistance(distance)}</p>
       <p className="escaped-hint">
         {level === 'imminent' && '鍵がもうすぐ届く…！'}
