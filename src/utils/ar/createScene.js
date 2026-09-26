@@ -4,6 +4,7 @@ import { loadModel } from '../item/loadModel'
 import { findItem } from '../item/items'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { createHpBar } from './hpBar'
+import { perfStart } from '../debug/perfLog' // [perf]
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -116,7 +117,9 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     _raycaster.setFromCamera(_ndc, camera)
     const center = _raycaster.ray.at(SPAWN_DISTANCE, new THREE.Vector3())
 
+    const endLoad = perfStart(`${enemy.id} のモデル読み込み（検出 → 表示）`) // [perf]
     const model = await loadEnemyModel(enemy.modelUrl)
+    endLoad() // [perf]
     if (!running) return null // 読み込み中に dispose された
     prepareModel(model, enemy.height)
 

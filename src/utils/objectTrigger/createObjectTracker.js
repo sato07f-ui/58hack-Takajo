@@ -1,4 +1,5 @@
 import { createYoloDetector } from './yoloDetector'
+import { logDetections, perfStart } from '../debug/perfLog' // [perf]
 
 // COCO で学習済みの YOLOv8n を 320×320 で ONNX に書き出したもの（public/models/ に置く）
 const MODEL_URL = '/models/yolov8n.onnx'
@@ -35,7 +36,10 @@ export const createObjectTracker = (video, { model, targetClass, minScore, inter
     if (busy || video.readyState < 2) return
     busy = true
     try {
+      const endDetect = perfStart('detect 合計（前処理 + session.run + 後処理）') // [perf]
       const predictions = await model.detect(video)
+      endDetect() // [perf]
+      logDetections(predictions) // [perf]
       if (timer === null) return // 検出中に stop() された
       const hit = predictions.find((p) => p.class === targetClass && p.score > minScore)
       if (!hit) return
