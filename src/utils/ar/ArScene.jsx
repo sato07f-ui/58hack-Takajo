@@ -5,7 +5,10 @@ import { useImageTrigger } from '../imageTrigger/useImageTrigger'
 import { videoToScreen } from '../imageTrigger/videoToScreen'
 import { ENEMIES } from '../enemy/enemies'
 
-const TARGETS_URL = '/targets/carrot.mind'
+// 画像認識で出現する敵（.mind があるもの）と、その .mind の一覧。
+// 認識結果の targetIndex は SCAN_TARGETS の添字になる
+const SCAN_TARGETS = ENEMIES.filter((enemy) => enemy.targetUrl)
+const TARGET_URLS = SCAN_TARGETS.map((enemy) => enemy.targetUrl)
 
 /**
  * props.orientationRef: useDeviceOrientation() の orientationRef
@@ -36,9 +39,9 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
 
   const { status: scanStatus, error: scanError } = useImageTrigger(videoRef, {
     enabled: status === 'ready', // カメラ映像が流れ始めてから認識を開始
-    targetsUrl: TARGETS_URL,
+    targetUrls: TARGET_URLS,
     async onDetect({ targetIndex, videoX, videoY }) {
-      const enemy = ENEMIES[targetIndex]
+      const enemy = SCAN_TARGETS[targetIndex]
       if (!enemy) return
       const { x, y } = videoToScreen(videoRef.current, videoX, videoY)
       await localSceneRef.current?.spawnEnemy(enemy, x, y)

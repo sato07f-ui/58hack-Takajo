@@ -3,12 +3,14 @@ import greenpepperUrl from '../../assets/greenpepper.glb?url'
 import spinachUrl from '../../assets/spinach.glb?url'
 
 /**
- * targetIndex（.mind に登録した画像の順番）→ 敵の定義。
- * 並び順は .mind へのアップロード順と同じにする。
+ * 敵の定義。
+ * modelUrl: 3D モデル（glb）
+ * targetUrl: この敵を出現させる画像の .mind（public/targets/ に 1 画像 1 ファイルで置く）。
+ *            null の敵は画像認識では出現しない
  * height: AR 空間で表示する高さ [m]（モデルの実寸に関係なくこの高さに揃える）
  */
 export const ENEMIES = [
-  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, height: 0.6 }, // 画像 0
-  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, height: 0.5 }, // 画像 1
-  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, height: 0.7 }, // 画像 2
+  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.6 },
+  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.5 },
+  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: null, height: 0.7 }, // .mind 未作成
 ]

@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createImageTracker } from './createImageTracker'
 
 /**
- * enabled が true になったら .mind の画像を探し始める hook。
+ * enabled が true になったら targetUrls の .mind に登録された画像を探し始める hook。
  * 見つかったら onDetect({ targetIndex, videoX, videoY }) を呼んで止まる。
+ * targetIndex は「targetUrls の何番目のファイルの画像か」。
+ * targetUrls は毎レンダーで作り直さないこと（変わると認識をやり直す）。
  * 戻り値: { status, error, rescan }
  * status: 'idle' | 'scanning' | 'detected' | 'error'
  * rescan(): 敵を倒した後などに、もう一度探し始める
  */
-export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => {
+export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect }) => {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const trackerRef = useRef(null)
@@ -26,7 +28,7 @@ export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => 
     const start = async () => {
       try {
         const tracker = await createImageTracker(videoRef.current, {
-          targetsUrl,
+          targetUrls,
           onDetect: (result) => {
             setStatus('detected')
             onDetectRef.current?.(result)
@@ -52,7 +54,7 @@ export const useImageTrigger = (videoRef, { enabled, targetsUrl, onDetect }) => 
       trackerRef.current?.dispose()
       trackerRef.current = null
     }
-  }, [enabled, targetsUrl, videoRef])
+  }, [enabled, targetUrls, videoRef])
 
   const rescan = useCallback(() => {
     if (!trackerRef.current) return
