@@ -1,71 +1,42 @@
-/* 全体レイアウト */
+/* 全体レイアウト：画面いっぱいを画像の背景と同じ青で塗り、中央に画像を置く */
 .container {
-  position: relative;
   width: 100%;
   height: 100dvh;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  padding: 2rem 1.5rem;
-  box-sizing: border-box;
+  overflow: hidden;
   font-family: sans-serif;
   user-select: none;
-
-  /* --- 背景画像の設定 --- */
-  background-image: 
-    /* 文字が見やすくなるように、背景画像の上に薄く暗いグラデーションを重ねる */
-    linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.4)),
-    url("../../assets/background.jpg");
-  background-size: cover; /* 画面いっぱいに表示 */
-  background-position: center; /* 中央合わせ */
-  background-repeat: no-repeat;
-}
-.spacer {
-  height: 2rem;
+  background: #346bc8; /* start-screen.png の背景色。画像と縦横比が違う端末で余る部分を同じ色にする */
 }
 
-/* ロゴエリア */
-.logoArea {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-
-  /* flex: 1 から変更し、上からの位置を固定・微調整できるようにします */
-  margin-top: 10dvh; /* 画面全体の高さの約10〜15%下に配置（上から約1/3の位置になります） */
-  margin-bottom: auto; /* 下側に自動で余白を作って下に押しやります */
-}
-/* ロゴのボックス */
-.logoBox {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 85%;
-  max-width: 320px;
-  /* ロゴ画像の周りにドロップシドウや光彩をつける場合はここに追加 */
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
-}
-/* ロゴ画像自体の表示調整 */
-.logoImage {
-  width: 100%;
-  height: auto;
-  object-fit: contain;
+/* 画像（1080×1920 = 9:16）を切らずに、画面に収まる最大の大きさで表示する枠 */
+.artboard {
+  position: relative;
+  width: min(100vw, calc(100dvh * 9 / 16));
+  aspect-ratio: 9 / 16;
+  container-type: inline-size; /* 中の文字サイズを枠の幅に合わせる（cqw 単位） */
+  background: url("../../assets/start-screen.png") center / contain no-repeat;
 }
 
-/* 下部：TAP TO START エリア */
+/* TAP TO START エリア：説明文の下、親子のイラストの上の空いている所（画像の上から 66% の位置） */
 .tapToStartArea {
-  width: 100%;
+  position: absolute;
+  top: 66%;
+  left: 0;
+  right: 0;
+  padding: 0 8%;
   text-align: center;
-  margin-bottom: 5dvh; /* 画面下部から少し浮かせた位置に固定 */
 }
 
 /* TAP TO START テキスト */
 .tapText {
-  font-size: 1.6rem;
+  margin: 0;
+  font-size: 6.5cqw; /* 画像の幅に合わせた大きさ（幅 400px なら約 26px） */
   font-weight: bold;
-  color: #ffffff; /* 背景が暗めの場所でも見えるように白文字に変更 */
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); /* 文字の周りに影をつけて見やすく */
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.35); /* 青い背景から少し浮かせる */
   animation: blink 1.5s infinite;
 }
 
@@ -83,9 +54,9 @@
 
 /* 見守りモードへのボタン（TAP TO START の下に控えめに出す） */
 .trackerButton {
-  margin-top: 1rem;
-  padding: 0.5rem 1.5rem;
-  font-size: 1rem;
+  margin-top: 5cqw; /* 余白も画像の幅に合わせる */
+  padding: 2cqw 6cqw;
+  font-size: 4cqw;
   font-weight: bold;
   color: #fff;
   background: rgba(0, 0, 0, 0.4);
