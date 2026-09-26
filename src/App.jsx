@@ -20,8 +20,14 @@ function App() {
   const [mp, setMp] = useState(50)
   const [isCooldown, setIsCooldown] = useState(false)
   const [currentEnemy, setCurrentEnemy] = useState(null) // 出ている敵（ENEMIES の要素）
-  const [droppedItem, setDroppedItem] = useState(null) // 倒した敵が落としたアイテム（ITEMS の要素）
+  const [droppedItem, setDroppedItem] = useState(null) // 手に入れたアイテム（ITEMS の要素）
   const defeatedRef = useRef(false) // playDefeatEffect を 1 回だけ呼ぶため
+
+  // ドロップが手元に届いて消えた瞬間に呼ばれる。ここで「手に入れた」表示と短い振動を出す
+  const handleCollect = (item) => {
+    setDroppedItem(item)
+    navigator.vibrate?.(50) // 着弾時（100ms）より短くする
+  }
 
   // クールダウンのタイマー
   useEffect(() => {
@@ -87,7 +93,7 @@ function App() {
         orientationRef={orientationRef}
         sceneRef={sceneRef}
         onEnemySpawn={setCurrentEnemy}
-        onDefeat={(enemy, item) => setDroppedItem(item)}
+        onCollect={handleCollect}
       />
       <div className="ui-layer">
         {/* 実機検証用リモコン。本番では外す */}

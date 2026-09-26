@@ -22,8 +22,9 @@ const BANANA = ENEMIES.find((enemy) => enemy.id === 'banana')
  *   画像認識の敵（にんじん等）も物体認識の敵（バナナ）も、同じようにここへ通知される
  * props.onDefeat(enemy, item): 撃破演出が終わって敵が消えたときに呼ばれる（任意）。
  *   item はドロップしたアイテム。何も落とさない敵なら null
+ * props.onCollect(item): ドロップがプレイヤーの手元に届いて消えたときに呼ばれる（任意）
  */
-export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onDefeat }) {
+export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onDefeat, onCollect }) {
   const { videoRef, status, error } = useCamera(true)
   const canvasRef = useRef(null)
   const localSceneRef = useRef(null) // 親が sceneRef を渡さなくても内部で使う
@@ -31,9 +32,11 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onDefeat }) {
   const foundRef = useRef(false)
   // 親が毎レンダー新しい関数を渡してもシーンを作り直さないよう ref で持つ
   const onDefeatRef = useRef(onDefeat)
+  const onCollectRef = useRef(onCollect)
   useEffect(() => {
     onDefeatRef.current = onDefeat
-  }, [onDefeat])
+    onCollectRef.current = onCollect
+  }, [onDefeat, onCollect])
 
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
@@ -45,6 +48,9 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onDefeat }) {
       },
       onDefeat(enemy, item) {
         onDefeatRef.current?.(enemy, item)
+      },
+      onCollect(item) {
+        onCollectRef.current?.(item)
       },
     })
     localSceneRef.current = scene
