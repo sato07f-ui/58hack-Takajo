@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
+import { loadModel } from '../item/loadModel'
+import { findItem } from '../item/items'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 
 const _zee = new THREE.Vector3(0, 0, 1)
@@ -13,6 +15,8 @@ const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
 const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れる時間
 const PROJECTILE_HIT_DISTANCE = 0.15 // 魔法弾がこの距離 [m] まで近づいたら着弾
 const PROJECTILE_LERP = 0.15 // 魔法弾が毎フレーム敵へ寄る割合
+const DROP_FLOAT_Y = 0.15 // ドロップを敵の足元から浮かせる高さ [m]
+const DROP_SPIN = 0.02 // ドロップの毎フレームの回転量 [rad]
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
@@ -35,9 +39,11 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
 /**
  * Three.js の scene / camera / renderer を作り、描画ループを開始する。
  * onFrame(camera): 毎フレーム描画前に呼ばれる（向き追従などに使う）
+ * onDefeat(enemy, item): 撃破演出が終わり敵が消えたときに呼ばれる。
+ *   item はその敵のドロップ（ITEMS の要素）。何も落とさない敵なら null
  * 戻り値の dispose() を呼ぶと全て停止・破棄する。
  */
-export const createScene = (canvas, { onFrame } = {}) => {
+export const createScene = (canvas, { onFrame, onDefeat } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true, //背景を透明にしてカメラ映像を透かす
@@ -61,12 +67,14 @@ export const createScene = (canvas, { onFrame } = {}) => {
   scene.add(camera) // カメラの子の光を描画に含めるため
 
   let enemyModel = null // 出ている敵のモデル（同時に出るのは 1 体だけ）
+  let dropModel = null // 出ているドロップアイテムのモデル（同時に出るのは 1 個だけ）
   const projectiles = [] // 飛翔中の魔法弾 { mesh, target, onHit }
   let rafId = 0
   let running = true
   let damageTimer = 0
   let squashTimer = 0
   let isDefeated = false // 撃破演出中なら true
+  let hasDropped = false // 今の敵のドロップ処理（spawnDrop と onDefeat）を済ませたら true
 
   /** モデルの中心（ワールド座標）を out に入れて返す */
   const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
@@ -125,8 +133,39 @@ export const createScene = (canvas, { onFrame } = {}) => {
     projectiles.length = 0
   }
 
-  /** 出ている敵を消す（いなければ何もしない） */
+  /** 出ているドロップを消す（いなければ何もしない） */
+  const clearDrop = () => {
+    if (!dropModel) return
+    scene.remove(dropModel)
+    dropModel.traverse((obj) => {
+      obj.geometry?.dispose()
+      obj.material?.dispose()
+    })
+    dropModel = null
+  }
+
+  /**
+   * ドロップアイテムを position（敵の足元）の少し上に出す。
+   * item: ITEMS の要素。既にドロップが出ていれば入れ替える
+   */
+  const spawnDrop = async (item, position) => {
+    const model = await loadModel(item.modelUrl)
+    if (!running || !model) return null // 読み込み中に dispose された、または modelUrl が無い
+    prepareModel(model, item.height)
+
+    model.position.copy(position)
+    model.position.y += DROP_FLOAT_Y
+    model.userData.item = item
+
+    clearDrop()
+    scene.add(model)
+    dropModel = model
+    return model
+  }
+
+  /** 出ている敵を消す（いなければ何もしない）。ドロップと魔法弾も一緒に消す */
   const clearEnemy = () => {
+    clearDrop()
     clearProjectiles()
     if (enemyModel) {
       scene.remove(enemyModel)
@@ -137,6 +176,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
       enemyModel = null
     }
     isDefeated = false
+    hasDropped = false
   }
 
   /** 出ている敵の emissive を color にする */
@@ -226,6 +266,14 @@ export const createScene = (canvas, { onFrame } = {}) => {
         enemyModel.scale.multiplyScalar(0.9)
       } else {
         enemyModel.visible = false
+        // 敵が消えた直後に 1 回だけドロップを出し、親に通知する
+        if (!hasDropped) {
+          hasDropped = true
+          const enemy = enemyModel.userData.enemy
+          const item = findItem(enemy?.drop)
+          if (item) spawnDrop(item, enemyModel.position)
+          onDefeat?.(enemy, item)
+        }
       }
     }
 
@@ -249,6 +297,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
     // 3. hitEffect.js のリング・粒子を進める
     updateHitEffects()
 
+    // 4. ドロップを回して「拾えるもの」に見せる
+    if (dropModel) dropModel.rotation.y += DROP_SPIN
+
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
   }
@@ -260,6 +311,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     renderer,
     spawnEnemy,
     clearEnemy,
+    spawnDrop,
+    clearDrop,
     playDamageEffect,
     shootMagic,
     playDefeatEffect,
