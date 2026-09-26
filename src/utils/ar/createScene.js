@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
+import { createHitEffect, updateHitEffects } from './hitEffect'
+import { spawnItem, updateItems, clearItems } from './itemDrop'
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -9,12 +11,15 @@ const DEG = Math.PI / 180
 
 const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
+const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
+const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
 const _size = new THREE.Vector3()
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
+const _hitPos = new THREE.Vector3()
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
@@ -59,6 +64,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
   let rafId = 0
   let running = true
   let damageTimer = 0
+  let squashTimer = 0
+  let isDefeated = false // 撃破演出中（縮んで消える途中）か
 
   /**
    * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
@@ -89,6 +96,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     model.lookAt(camera.position.x, model.position.y, camera.position.z)
 
     model.userData.enemy = enemy
+    model.userData.baseScale = model.scale.x // 変形・撃破演出で元の大きさに戻すため
+    isDefeated = false
     scene.add(model)
     enemies.push(model)
     return model
@@ -115,13 +124,62 @@ export const createScene = (canvas, { onFrame } = {}) => {
     }
   }
 
-  /** ダメージを受けた演出：出ている敵を一瞬白く光らせる */
+  /** 出ている敵全員を、元の大きさに対して (x, y, z) 倍にする */
+  const setEnemiesScale = (x, y, z) => {
+    for (const model of enemies) {
+      const base = model.userData.baseScale
+      model.scale.set(base * x, base * y, base * z)
+    }
+  }
+
+  /** ダメージを受けた演出：出ている敵を一瞬白く光らせ、潰し、ヒットエフェクトを出す */
   const playDamageEffect = () => {
+    if (isDefeated) return
+
     setEnemiesEmissive(_white)
     clearTimeout(damageTimer)
     damageTimer = setTimeout(() => {
       if (running) setEnemiesEmissive(_black)
     }, DAMAGE_FLASH_MS)
+
+    setEnemiesScale(1.3, 0.8, 1.3)
+    clearTimeout(squashTimer)
+    squashTimer = setTimeout(() => {
+      if (running && !isDefeated) setEnemiesScale(1, 1, 1)
+    }, DAMAGE_SQUASH_MS)
+
+    // 原点が足元なので、エフェクトは体の中心に出す
+    for (const model of enemies) {
+      _hitPos.copy(model.position)
+      _hitPos.y += model.userData.enemy.height / 2
+      createHitEffect(scene, camera, _hitPos)
+    }
+  }
+
+  /** 撃破演出：出ている敵を回転しながら縮ませ、消えたらアイテムを落とす（処理は loop 内） */
+  const playDefeatEffect = () => {
+    if (enemies.length === 0) return
+    clearTimeout(squashTimer)
+    isDefeated = true
+  }
+
+  /** 撃破演出を 1 フレーム進める */
+  const updateDefeat = () => {
+    if (!isDefeated) return
+    for (const model of enemies) {
+      model.rotation.y += 0.1
+      model.scale.multiplyScalar(0.9)
+    }
+    if (enemies[0].scale.x > enemies[0].userData.baseScale * DEFEAT_MIN_SCALE) return
+
+    // 消えきったら、体の中心があった位置にアイテムを落とす
+    for (const model of enemies) {
+      _hitPos.copy(model.position)
+      _hitPos.y += model.userData.enemy.height / 2
+      spawnItem(scene, _hitPos)
+    }
+    clearEnemies()
+    isDefeated = false
   }
 
   const resize = () => {
@@ -137,6 +195,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
   const loop = () => {
     if (!running) return
     onFrame?.(camera)
+    updateDefeat()
+    updateHitEffects()
+    updateItems()
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
   }
@@ -149,12 +210,15 @@ export const createScene = (canvas, { onFrame } = {}) => {
     spawnEnemy,
     clearEnemies,
     playDamageEffect,
+    playDefeatEffect,
     dispose() {
       running = false
       cancelAnimationFrame(rafId)
       clearTimeout(damageTimer)
+      clearTimeout(squashTimer)
       window.removeEventListener('resize', resize)
       clearEnemies()
+      clearItems()
       renderer.dispose()
     },
   }

@@ -32,11 +32,13 @@ function App() {
     if (isCooldown || mp < ATTACK_MP_COST) return
 
     setMp((prev) => prev - ATTACK_MP_COST)
-    setEnemyHp((prev) => Math.max(prev - ATTACK_DAMAGE, 0))
+    const nextHp = Math.max(enemyHp - ATTACK_DAMAGE, 0)
+    setEnemyHp(nextHp)
     setIsCooldown(true)
 
-    // ヒット時のフィードバック演出：敵を光らせて端末を振動させる
-    sceneRef.current?.playDamageEffect()
+    // フィードバック演出：HP が 0 なら撃破（消滅＋アイテムドロップ）、残っていればダメージ（発光・変形・エフェクト）
+    if (nextHp === 0) sceneRef.current?.playDefeatEffect()
+    else sceneRef.current?.playDamageEffect()
     navigator.vibrate?.(100) // PC や一部 iOS では動かないがエラーにはならない
   }
 
