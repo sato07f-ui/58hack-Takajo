@@ -22,3 +22,25 @@
   border: none;
   font-weight: bold;
 }
+
+/* ===============================
+   3. ARカメラと3Dキャンバスのスタイル
+   =============================== */
+.ar-video,
+.ar-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100dvh;
+  object-fit: cover;
+}
+
+.ar-video {
+  z-index: 1; /* 一番奥（背景） */
+}
+
+.ar-canvas {
+  z-index: 2; /* 映像の手前、UI(10)より奥 */
+  pointer-events: none; /* タップ操作の邪魔をしない */
+}

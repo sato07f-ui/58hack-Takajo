@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArScene } from "./utils/ar/ArScene";
 import { useDeviceOrientation } from "./utils/ar/useDeviceOrientation";
 import "./App.css";
@@ -8,9 +8,11 @@ function App() {
   const { orientationRef, permission, requestPermission } =
     useDeviceOrientation();
 
+  // ★追加：Three.js（3D空間）へ命令を送るためのパイプ
+  const sceneRef = useRef(null);
+
   // ===============================
   // ★追加：バトル用の状態（State）管理
-  // ===============================
   const [enemyHp, setEnemyHp] = useState(100); // 敵のHP
   const [mp, setMp] = useState(50); // プレイヤーのMP
   const [isCooldown, setIsCooldown] = useState(false); // クールダウン中かどうか
@@ -26,6 +28,21 @@ function App() {
 
     // クールダウン開始
     setIsCooldown(true);
+
+    // ===============================
+    // ★追加：ヒット時のフィードバック演出
+    // ===============================
+    // 1. 3Dのキューブを赤く光らせる命令を出す
+    if (sceneRef.current && sceneRef.current.playDamageEffect) {
+      sceneRef.current.playDamageEffect();
+    }
+
+    // 2. スマホを「ブルッ」と振動させる（100ミリ秒）
+    // ※PCブラウザや一部のiOS設定では動作しませんが、エラーにはなりません
+    if (navigator.vibrate) {
+      navigator.vibrate(100);
+    }
+    // ===============================
   };
 
   // ★追加：クールダウンのタイマー処理（isCooldownが変化するたびに実行される）
@@ -70,7 +87,8 @@ function App() {
 
   return (
     <>
-      <ArScene orientationRef={orientationRef} />
+      {/* ★修正：sceneRef を ArScene に渡してパイプを繋ぐ */}
+      <ArScene orientationRef={orientationRef} sceneRef={sceneRef} />
 
       {/* UIレイヤー：ARの手前にボタンを配置 */}
       <div className="ui-layer">

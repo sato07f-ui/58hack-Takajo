@@ -14,10 +14,11 @@ export function ArScene({ orientationRef, sceneRef }) {
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
       onFrame(camera) {
-        if (orientationRef.current) {
-          const angle = screen.orientation?.angle ?? window.orientation ?? 0;
-          applyDeviceOrientation(camera, orientationRef.current, angle);
-        }
+        // ★ 修正: PCでのテストを確実に行うため、一旦カメラの向き変更処理を全て無効化する
+        // if (orientationRef.current) {
+        //   const angle = screen.orientation?.angle ?? window.orientation ?? 0;
+        //   applyDeviceOrientation(camera, orientationRef.current, angle);
+        // }
       },
     });
     if (sceneRef) sceneRef.current = scene;
