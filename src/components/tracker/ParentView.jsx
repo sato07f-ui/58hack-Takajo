@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useGeolocation } from '../../utils/tracker/useGeolocation'
 import { useLocationChannel } from '../../utils/tracker/useLocationChannel'
+import { useReviveSender } from '../../utils/tracker/useReviveSender'
 import { isValidRoomCode, normalizeRoomCode } from '../../utils/tracker/roomCode'
+import { REVIVE_DISTANCE_M } from '../../utils/tracker/escapeRules'
 import { DistanceDisplay } from './DistanceDisplay'
 import { ConnectionStatus } from './ConnectionStatus'
 import { LocationPermissionHint } from './LocationPermissionHint'
@@ -16,6 +18,7 @@ export function ParentView({ onBack }) {
   const geo = useGeolocation()
   const channel = useLocationChannel({ roomCode, role: 'parent' })
   const { status, sendLocation } = channel
+  const revive = useReviveSender({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
 
   // 自分の位置が更新されたら子供に送る
   useEffect(() => {
@@ -65,7 +68,18 @@ export function ParentView({ onBack }) {
       <p className="tracker-code">
         鍵: <strong>{roomCode}</strong>
       </p>
+      {revive.childState === 'escaped' && (
+        <div className="child-escaped-banner" role="alert">
+          <p className="child-escaped-title">子供がダンジョンから脱出しました！</p>
+          <p>
+            {revive.sendingKey
+              ? '復活の鍵を送信中…'
+              : `子供に近づいて（${REVIVE_DISTANCE_M} m 以内）鍵を渡しましょう`}
+          </p>
+        </div>
+      )}
       <DistanceDisplay me={geo.position} peer={channel.peerLocation} />
+      <p className="tracker-note">子供の状態: {revive.childState === 'escaped' ? '脱出中' : 'ダンジョン内'}</p>
       <ConnectionStatus {...channel} peerLabel="子供" />
       <LocationPermissionHint permission={geo.permission} error={geo.error} />
       <button type="button" className="tracker-link" onClick={handleStop}>

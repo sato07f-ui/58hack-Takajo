@@ -19,7 +19,7 @@ function App() {
   }
 
   if (mode === 'tracker') {
-    return <TrackerMode onExit={() => setMode('game')} />
+    return <TrackerMode onExit={() => setMode('game')} ar={{ orientationRef, requestPermission }} />
   }
 
   if (!started) {
