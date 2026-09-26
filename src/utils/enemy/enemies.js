@@ -1,6 +1,7 @@
 import carrotUrl from '../../assets/carrot.glb?url'
 import greenpepperUrl from '../../assets/greenpepper.glb?url'
 import spinachUrl from '../../assets/spinach.glb?url'
+import bananaUrl from '../../assets/banana.glb?url'
 
 /**
  * 敵の定義。
@@ -16,6 +17,6 @@ export const ENEMIES = [
   { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3, drop: 'carrot-sword' },
   { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.25, drop: null },
   { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: '/targets/spinach.mind', height: 0.35, drop: null }, // .mind 未作成
-  // 特別な敵: 本物のバナナを COCO-SSD で検出して出す（3D モデルは未作成なので仮モデル）
-  { id: 'banana', name: 'バナナ', modelUrl: null, targetUrl: null, detectClass: 'banana', height: 0.3, drop: 'banana-boomerang' },
+  // 特別な敵: 本物のバナナを COCO-SSD で検出して出す
+  { id: 'banana', name: 'バナナ', modelUrl: bananaUrl, targetUrl: null, detectClass: 'banana', height: 0.3, drop: 'banana-boomerang' },
 ]

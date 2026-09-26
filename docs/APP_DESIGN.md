@@ -100,7 +100,7 @@
 - 入手先（自作 / 無料アセット / AI生成）: ここに記入
 - 形式: glb
 - 格納場所: `src/assets/*.glb`（Vite の `?url` import で読み込む）
-  - 敵: `carrot.glb`, `greenpepper.glb`, `spinach.glb`（バナナは未作成で仮モデル）
+  - 敵: `carrot.glb`, `greenpepper.glb`, `spinach.glb`, `banana.glb`
   - アイテム: `banana_boomerang.glb`, `carrot_sword.glb`, `potion.glb`
 - 原点はいずれも足元（min.y = 0）。表示サイズは `height` [m] に揃えるので実寸は問わないが、平たいモデルは `height` を小さめにする
 
