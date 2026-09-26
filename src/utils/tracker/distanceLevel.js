@@ -1,8 +1,8 @@
 /** 距離（m）に応じた表示レベル。CSS の .distance-{level} と対応する */
 export const distanceLevel = (meters) => {
   if (meters == null) return 'unknown'
-  if (meters < 20) return 'near'
-  if (meters < 50) return 'mid'
+  if (meters < 5) return 'near'
+  if (meters < 10) return 'mid'
   return 'far'
 }
 

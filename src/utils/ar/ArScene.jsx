@@ -24,6 +24,8 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
       onFrame(camera) {
+        // PC ブラウザなどセンサー値が無い場合は向きを変えない
+        if (!orientationRef.current) return
         const angle = screen.orientation?.angle ?? window.orientation ?? 0
         applyDeviceOrientation(camera, orientationRef.current, angle)
       },

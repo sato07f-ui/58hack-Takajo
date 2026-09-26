@@ -8,10 +8,13 @@ const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸
 const DEG = Math.PI / 180
 
 const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
+const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
 const _size = new THREE.Vector3()
+const _white = new THREE.Color(0xffffff)
+const _black = new THREE.Color(0x000000)
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
@@ -23,7 +26,6 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
   camera.quaternion.multiply(_q1) // 端末を「立てて持つ」姿勢を正面にする
   camera.quaternion.multiply(_q0.setFromAxisAngle(_zee, -screenAngle * DEG)) // 画面回転の補正
 }
-
 
 /**
  * Three.js の scene / camera / renderer を作り、描画ループを開始する。
@@ -45,6 +47,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
   scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2))
 
   const enemies = []
+  let rafId = 0
+  let running = true
+  let damageTimer = 0
 
   /**
    * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
@@ -59,6 +64,11 @@ export const createScene = (canvas, { onFrame } = {}) => {
 
     const model = await loadEnemyModel(enemy.modelUrl)
     if (!running) return null // 読み込み中に dispose された
+
+    // clone() はマテリアルを共有するので、この個体だけ色を変えられるよう複製する
+    model.traverse((obj) => {
+      if (obj.material) obj.material = obj.material.clone()
+    })
 
     // 表示サイズを enemy.height [m] に揃える
     _box.setFromObject(model).getSize(_size)
@@ -81,9 +91,28 @@ export const createScene = (canvas, { onFrame } = {}) => {
       scene.remove(model)
       model.traverse((obj) => {
         obj.geometry?.dispose()
+        obj.material?.dispose()
       })
     }
     enemies.length = 0
+  }
+
+  /** 出ている敵全員の emissive を color にする */
+  const setEnemiesEmissive = (color) => {
+    for (const model of enemies) {
+      model.traverse((obj) => {
+        obj.material?.emissive?.copy(color)
+      })
+    }
+  }
+
+  /** ダメージを受けた演出：出ている敵を一瞬白く光らせる */
+  const playDamageEffect = () => {
+    setEnemiesEmissive(_white)
+    clearTimeout(damageTimer)
+    damageTimer = setTimeout(() => {
+      if (running) setEnemiesEmissive(_black)
+    }, DAMAGE_FLASH_MS)
   }
 
   const resize = () => {
@@ -96,10 +125,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
   resize()
   window.addEventListener('resize', resize)
 
-  let rafId = 0
-  let running = true
   const loop = () => {
-    if(!running) return
+    if (!running) return
     onFrame?.(camera)
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
@@ -112,9 +139,11 @@ export const createScene = (canvas, { onFrame } = {}) => {
     renderer,
     spawnEnemy,
     clearEnemies,
+    playDamageEffect,
     dispose() {
       running = false
       cancelAnimationFrame(rafId)
+      clearTimeout(damageTimer)
       window.removeEventListener('resize', resize)
       clearEnemies()
       renderer.dispose()
