@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { spawnItem, updateItems, clearItems } from './itemDrop'
+import { ITEMS } from '../item/items'
+import { createHpBar } from './hpBar'
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -13,6 +15,7 @@ const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
 const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
 const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
+const HP_BAR_GAP = 0.04 // 敵の頭のてっぺんから HP ゲージまでの距離 [m]
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
@@ -21,6 +24,7 @@ const _center = new THREE.Vector3()
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
 const _hitPos = new THREE.Vector3()
+const _barPos = new THREE.Vector3()
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
@@ -36,9 +40,10 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
 /**
  * Three.js の scene / camera / renderer を作り、描画ループを開始する。
  * onFrame(camera): 毎フレーム描画前に呼ばれる（向き追従などに使う）
+ * onItemCollect(item): 敵が落としたアイテムをプレイヤーが拾ったときに呼ばれる（item は ITEMS の要素）
  * 戻り値の dispose() を呼ぶと全て停止・破棄する。
  */
-export const createScene = (canvas, { onFrame } = {}) => {
+export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true, //背景を透明にしてカメラ映像を透かす
@@ -100,8 +105,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
 
     model.userData.enemy = enemy
     model.userData.baseScale = model.scale.x // 変形・撃破演出で元の大きさに戻すため
+    model.userData.hpBar = createHpBar()
     isDefeated = false
-    scene.add(model)
+    scene.add(model, model.userData.hpBar.group)
     enemies.push(model)
     return model
   }
@@ -121,6 +127,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
     clearProjectiles()
     for (const model of enemies) {
       scene.remove(model)
+      model.userData.hpBar.dispose()
       model.traverse((obj) => {
         obj.geometry?.dispose()
         obj.material?.dispose()
@@ -128,6 +135,20 @@ export const createScene = (canvas, { onFrame } = {}) => {
     }
     enemies.length = 0
     isDefeated = false
+  }
+
+  /** 出ている敵の HP ゲージを ratio（0〜1。残り HP ÷ 最大 HP）にする */
+  const setEnemyHpRatio = (ratio) => {
+    for (const model of enemies) model.userData.hpBar.setRatio(ratio)
+  }
+
+  /** HP ゲージを敵の頭上に合わせ、減る様子を 1 フレーム進める */
+  const updateHpBars = () => {
+    for (const model of enemies) {
+      _barPos.copy(model.position)
+      _barPos.y += model.userData.enemy.height + HP_BAR_GAP // 原点が足元なので、身長ぶん上が頭のてっぺん
+      model.userData.hpBar.update(camera, _barPos)
+    }
   }
 
   /** 出ている敵全員の emissive を color にする */
@@ -191,7 +212,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     for (const model of enemies) {
       _hitPos.copy(model.position)
       _hitPos.y += model.userData.enemy.height / 2
-      spawnItem(scene, _hitPos)
+      const item = ITEMS[model.userData.enemy.dropItemId]
+      if (item) spawnItem(scene, _hitPos, { item, onCollect: onItemCollect })
     }
     clearEnemies()
     isDefeated = false
@@ -211,8 +233,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
     if (!running) return
     onFrame?.(camera)
     updateDefeat()
+    updateHpBars()
     updateHitEffects()
-    updateItems()
+    updateItems(camera)
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
   }
@@ -224,6 +247,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
     renderer,
     spawnEnemy,
     clearEnemies,
+    setEnemyHpRatio,
     playDamageEffect,
     playDefeatEffect,
     dispose() {

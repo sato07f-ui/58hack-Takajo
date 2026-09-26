@@ -20,13 +20,17 @@ const BANANA = ENEMIES.find((enemy) => enemy.id === 'banana')
  * props.sceneRef: createScene() の戻り値を親に渡すための ref（任意）
  * props.onEnemySpawn(enemy): 敵が出現したときに呼ばれる（任意。ゲームロジックへの通知用）。
  *   画像認識の敵（にんじん等）も物体認識の敵（バナナ）も、同じようにここへ通知される
+ * props.onItemCollect(item): 倒した敵が落としたアイテムを拾ったときに呼ばれる（任意。手持ちに入れる用）。
+ *   拾った後は次の敵を探し始める
  */
-export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
+export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect }) {
   const { videoRef, status, error } = useCamera(true)
   const canvasRef = useRef(null)
   const localSceneRef = useRef(null) // 親が sceneRef を渡さなくても内部で使う
   // 画像認識と物体認識のどちらかで敵が見つかったら true。同時に見つかっても敵は 1 体だけ出す
   const foundRef = useRef(false)
+  // createScene は最初に 1 回だけ作るので、アイテムを拾ったときの処理は ref 経由で最新のものを呼ぶ
+  const itemCollectRef = useRef(null)
 
   useEffect(() => {
     const scene = createScene(canvasRef.current, {
@@ -36,6 +40,7 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
         const angle = screen.orientation?.angle ?? window.orientation ?? 0
         applyDeviceOrientation(camera, orientationRef.current, angle)
       },
+      onItemCollect: (item) => itemCollectRef.current?.(item),
     })
     localSceneRef.current = scene
     if (sceneRef) sceneRef.current = scene
@@ -60,19 +65,39 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn }) {
     onEnemySpawn?.(enemy)
   }
 
-  const { status: scanStatus, error: scanError, stop: stopImageScan } = useImageTrigger(videoRef, {
+  const {
+    status: scanStatus,
+    error: scanError,
+    stop: stopImageScan,
+    rescan: rescanImage,
+  } = useImageTrigger(videoRef, {
     enabled: status === 'ready', // カメラ映像が流れ始めてから認識を開始
     targetUrls: TARGET_URLS,
     onDetect: ({ targetIndex, videoX, videoY }) => handleEnemyFound(SCAN_TARGETS[targetIndex], videoX, videoY),
   })
 
   // 本物のバナナを COCO-SSD で探す
-  const { status: objectStatus, stop: stopObjectScan } = useObjectTrigger(videoRef, {
+  const { status: objectStatus, stop: stopObjectScan, rescan: rescanObject } = useObjectTrigger(videoRef, {
     enabled: status === 'ready',
     targetClass: BANANA.detectClass,
     minScore: 0.6,
     intervalMs: 500,
     onDetect: ({ videoX, videoY }) => handleEnemyFound(BANANA, videoX, videoY),
+  })
+
+  /**
+   * 敵が落としたアイテムを拾ったら、親に通知して次の敵を探し始める。
+   * （アイテムを拾うまでは探さないので、倒した直後に次の敵が重なって出ることはない）
+   */
+  const handleItemCollect = (item) => {
+    onItemCollect?.(item)
+    foundRef.current = false
+    rescanImage()
+    rescanObject()
+  }
+
+  useEffect(() => {
+    itemCollectRef.current = handleItemCollect
   })
 
   return (

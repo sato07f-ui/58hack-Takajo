@@ -1,71 +1,36 @@
-import { useState } from "react";
 import styles from "./StartScreen.module.css";
-import logoImg from "../../assets/logo.png";
 
-export const StartScreen = ({ onStart }) => {
-  // あそびかたを表示中かどうかのフラグ
-  const [showHowToPlay, setShowHowToPlay] = useState(false);
-
-  // 画面のどこかをタップした時の処理
-  const handleScreenTap = () => {
-    // すでにモーダルが開いている時は重ねて実行しない
-    if (!showHowToPlay) {
-      setShowHowToPlay(true);
-    }
-  };
-
-  // モーダルの「OK」を押した時にゲームを開始する
-  const handleConfirmHowToPlay = (e) => {
-    e.stopPropagation(); // 画面全体のタップイベントが再発火するのを防ぐ
-    onStart(); // ArSceneへ遷移
-  };
-
+/**
+ * タイトル画面。画面のどこかをタップすると、すぐにゲーム（AR バトル）を始める。
+ * 背景の画像（start-screen.png）にタイトルロゴやイラストが全て描かれているので、
+ * ここでは TAP TO START などの操作部分だけを画像の空いている所に重ねる。
+ * props.onStart: 画面をタップしたときに呼ばれる（センサー権限の要求はこのタップの中で行う）
+ * props.onOpenTracker: 「見守りモード」を押したときに呼ばれる（任意。無ければボタンを出さない）
+ * props.notice: 開始できなかった理由など、TAP TO START の下に出すメッセージ（任意）
+ */
+export const StartScreen = ({ onStart, onOpenTracker, notice }) => {
   return (
-    <div className={styles.container} onClick={handleScreenTap}>
-      {/* 上部余白 */}
-      <div className={styles.spacer} />
-
-      {/* 中央：ロゴエリア */}
-      <div className={styles.logoArea}>
-        <div className={styles.logoBox}>
-          {/* 2. テキストから画像タグに差し替え */}
-          <img src={logoImg} alt="Mart Quest" className={styles.logoImage} />
-        </div>
-      </div>
-
-      {/* 下部：TAP TO START テキスト */}
-      <div className={styles.tapToStartArea}>
-        <p className={styles.tapText}>- TAP TO START -</p>
-      </div>
-
-      {/* モーダル：あそびかた（タップ後に自動表示） */}
-      {showHowToPlay && (
-        <div className={styles.modalOverlay}>
-          <div
-            className={styles.modalContent}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className={styles.modalTitle}>あそびかた</h2>
-            <div className={styles.instructionList}>
-              <p>
-                <span className={styles.emoji}>1️⃣ 📱</span> かざす
-              </p>
-              <p>
-                <span className={styles.emoji}>2️⃣ 👾</span> てきがでる
-              </p>
-              <p>
-                <span className={styles.emoji}>3️⃣ ⚔️</span> たおす
-              </p>
-            </div>
+    <div className={styles.container} onClick={onStart}>
+      {/* 画像と同じ縦横比の枠。中の要素の位置は画像に対する割合で決める */}
+      <div className={styles.artboard} role="img" aria-label="マーケットダンジョン">
+        {/* 画像の中ほどの空いている所：TAP TO START */}
+        <div className={styles.tapToStartArea}>
+          <p className={styles.tapText}>- TAP TO START -</p>
+          {notice && <p className={styles.notice}>{notice}</p>}
+          {onOpenTracker && (
             <button
-              className={styles.closeButton}
-              onClick={handleConfirmHowToPlay}
+              type="button"
+              className={styles.trackerButton}
+              onClick={(e) => {
+                e.stopPropagation(); // 画面タップ扱いにして、ゲームを始めないようにする
+                onOpenTracker();
+              }}
             >
-              OK (ゲーム開始)
+              見守りモード
             </button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
