@@ -1,15 +1,20 @@
-import '@tensorflow/tfjs' // WebGL / CPU バックエンドを登録する（coco-ssd より先に読み込む）
-import * as cocoSsd from '@tensorflow-models/coco-ssd'
+import { createYoloDetector } from './yoloDetector'
+
+// COCO で学習済みの YOLOv8n を 320×320 で ONNX に書き出したもの（public/models/ に置く）
+const MODEL_URL = '/models/yolov8n.onnx'
 
 let modelPromise = null
 
 /**
- * COCO-SSD のモデルを読み込む（アプリ全体で 1 回だけ。2 回目以降は同じものを返す）。
- * 重みは初回にネットから数 MB ダウンロードされる。
+ * YOLO の物体検出モデルを読み込む（アプリ全体で 1 回だけ。2 回目以降は同じものを返す）。
+ * 戻り値の detect(video) は COCO-SSD と同じ形 [{ class, score, bbox }] を返す。
+ * 初回はモデル (約 12MB) と ONNX Runtime の WASM をダウンロードする。
  */
 export const loadObjectModel = () => {
-  // lite_mobilenet_v2: 軽量で速い。精度重視なら 'mobilenet_v2'
-  modelPromise ??= cocoSsd.load({ base: 'lite_mobilenet_v2' })
+  modelPromise ??= createYoloDetector(MODEL_URL).catch((e) => {
+    modelPromise = null // 失敗したら次回やり直せるようにする
+    throw e
+  })
   return modelPromise
 }
 

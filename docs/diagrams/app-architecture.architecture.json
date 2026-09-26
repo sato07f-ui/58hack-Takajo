@@ -1,0 +1,381 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "スーパーダンジョン アプリ構成図",
+    "output": "app-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1390,
+      700
+    ],
+    "views": [
+      {
+        "id": "game",
+        "label": "AR ゲーム",
+        "focus": [
+          "app",
+          "arscene",
+          "camera",
+          "imgtrig",
+          "objtrig",
+          "scene",
+          "enemies"
+        ],
+        "note": "カメラ映像から食材を認識し、Three.js で敵を出す流れ。"
+      },
+      {
+        "id": "tracker",
+        "label": "見守りモード",
+        "focus": [
+          "app",
+          "tracker",
+          "geo",
+          "channel",
+          "supabase"
+        ],
+        "note": "親子が位置を送り合い、距離で脱出と復活を判定する流れ。"
+      }
+    ],
+    "repository": {
+      "url": "https://github.com/sato07f-ui/58hack-Takajo",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "fc92f1b8faefd1cd8581ff8c02b32ecf4f49274b"
+    }
+  },
+  "components": [
+    {
+      "id": "app",
+      "type": "frontend",
+      "label": "App.jsx",
+      "sublabel": "モード切替 / バトル状態",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/App.jsx"
+        }
+      ]
+    },
+    {
+      "id": "camera",
+      "type": "external",
+      "label": "カメラ / 向きセンサー",
+      "sublabel": "getUserMedia / DeviceOrientation",
+      "pos": [
+        300,
+        40
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/ar/useCamera.js"
+        },
+        {
+          "path": "src/utils/ar/useDeviceOrientation.js"
+        }
+      ]
+    },
+    {
+      "id": "arscene",
+      "type": "frontend",
+      "label": "ArScene.jsx",
+      "sublabel": "video + canvas を重ねる",
+      "pos": [
+        300,
+        180
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/ar/ArScene.jsx"
+        }
+      ]
+    },
+    {
+      "id": "imgtrig",
+      "type": "backend",
+      "label": "画像認識",
+      "sublabel": "MindAR (.mind)",
+      "pos": [
+        740,
+        40
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/imageTrigger/createImageTracker.js"
+        }
+      ]
+    },
+    {
+      "id": "objtrig",
+      "type": "backend",
+      "label": "物体認識",
+      "sublabel": "TensorFlow.js COCO-SSD",
+      "pos": [
+        740,
+        180
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/objectTrigger/createObjectTracker.js"
+        }
+      ]
+    },
+    {
+      "id": "scene",
+      "type": "frontend",
+      "label": "createScene",
+      "sublabel": "Three.js 描画ループ",
+      "pos": [
+        740,
+        300
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/ar/createScene.js"
+        }
+      ]
+    },
+    {
+      "id": "enemies",
+      "type": "database",
+      "label": "敵モデル",
+      "sublabel": "ENEMIES + glb アセット",
+      "pos": [
+        1020,
+        300
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/enemy/enemies.js"
+        },
+        {
+          "path": "src/utils/enemy/loadEnemyModel.js"
+        }
+      ]
+    },
+    {
+      "id": "tracker",
+      "type": "frontend",
+      "label": "TrackerMode",
+      "sublabel": "役割選択 → 親 / 子ビュー",
+      "pos": [
+        300,
+        460
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/components/tracker/TrackerMode.jsx"
+        }
+      ]
+    },
+    {
+      "id": "geo",
+      "type": "external",
+      "label": "位置情報 API",
+      "sublabel": "Geolocation watchPosition",
+      "pos": [
+        300,
+        590
+      ],
+      "size": [
+        190,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/tracker/useGeolocation.js"
+        }
+      ]
+    },
+    {
+      "id": "channel",
+      "type": "backend",
+      "label": "useLocationChannel",
+      "sublabel": "位置の間引き送信 / 途絶判定",
+      "pos": [
+        740,
+        460
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/utils/tracker/useLocationChannel.js"
+        }
+      ]
+    },
+    {
+      "id": "supabase",
+      "type": "cloud",
+      "label": "Supabase Realtime",
+      "sublabel": "Broadcast + Presence",
+      "pos": [
+        1180,
+        460
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "brand": "supabase",
+      "sources": [
+        {
+          "path": "src/utils/tracker/supabaseClient.js"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "ブラウザ (React 19 + Vite, スマホ想定)",
+      "wraps": [
+        "app",
+        "camera",
+        "arscene",
+        "imgtrig",
+        "objtrig",
+        "scene",
+        "enemies",
+        "tracker",
+        "geo",
+        "channel"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "app-to-arscene",
+      "from": "app",
+      "to": "arscene",
+      "label": "ゲーム開始",
+      "variant": "emphasis"
+    },
+    {
+      "id": "app-to-tracker",
+      "from": "app",
+      "to": "tracker",
+      "label": "見守りモード"
+    },
+    {
+      "id": "arscene-to-camera",
+      "from": "arscene",
+      "to": "camera",
+      "label": "映像 / 姿勢を取得"
+    },
+    {
+      "id": "arscene-to-imgtrig",
+      "from": "arscene",
+      "to": "imgtrig",
+      "label": "video → onDetect",
+      "labelSegment": 1
+    },
+    {
+      "id": "arscene-to-objtrig",
+      "from": "arscene",
+      "to": "objtrig",
+      "label": "video → onDetect",
+      "labelDx": 60
+    },
+    {
+      "id": "arscene-to-scene",
+      "from": "arscene",
+      "to": "scene",
+      "label": "spawnEnemy",
+      "variant": "emphasis"
+    },
+    {
+      "id": "scene-to-enemies",
+      "from": "scene",
+      "to": "enemies",
+      "label": "glb 読込"
+    },
+    {
+      "id": "tracker-to-geo",
+      "from": "tracker",
+      "to": "geo",
+      "label": "自分の位置",
+      "labelDy": 24
+    },
+    {
+      "id": "tracker-to-channel",
+      "from": "tracker",
+      "to": "channel",
+      "label": "位置 / escaped / revive",
+      "variant": "emphasis"
+    },
+    {
+      "id": "channel-to-supabase",
+      "from": "channel",
+      "to": "supabase",
+      "label": "WebSocket",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "AR ゲーム",
+      "items": [
+        "MindAR の画像認識と COCO-SSD の物体認識を並走させ、先に見つけた方で敵を 1 体出す",
+        "createScene が敵 glb をカメラ前 0.5 m に配置し、向きセンサーでカメラを回す",
+        "App.jsx の攻撃ボタンが sceneRef 経由で playDamageEffect を呼ぶ"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "見守りモード",
+      "items": [
+        "ルームコードごとの Supabase チャンネルに親子が入り、位置を Broadcast で送り合う",
+        "haversine で距離を出し、50 m 超が 5 秒続けば脱出、10 m 以内が 3 秒続けば復活の鍵を送る",
+        "Presence と 30 秒無受信で相手の途絶を表示"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "設定",
+      "items": [
+        "VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY を .env.local に置く",
+        ".mind は public/targets/、glb は src/assets/ に配置",
+        "実機確認は npm run tunnel (cloudflared) で HTTPS 経由"
+      ]
+    }
+  ]
+}
