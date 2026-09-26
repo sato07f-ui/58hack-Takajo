@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ArScene } from '../../utils/ar/ArScene'
+import { useBattle } from '../../utils/battle/useBattle'
 import { useGeolocation } from '../../utils/tracker/useGeolocation'
 import { useLocationChannel } from '../../utils/tracker/useLocationChannel'
 import { useEscapeState } from '../../utils/tracker/useEscapeState'
@@ -10,10 +11,12 @@ import { DistanceDisplay } from './DistanceDisplay'
 import { ConnectionStatus } from './ConnectionStatus'
 import { LocationPermissionHint } from './LocationPermissionHint'
 import { EscapedScreen, RevivedBanner } from './EscapedScreen'
+import { BattleHud } from '../battle/BattleHud'
 
 /**
  * 子供の画面。親の横でコードを入力して接続し、以後はコードを表示しない。
- * 接続後に「ダンジョンへ入る」で AR ゲームを開き、離れすぎると脱出状態のオーバーレイを重ねる。
+ * 接続後に「ダンジョンへ入る」で AR バトルを開き、離れすぎると脱出状態のオーバーレイを重ねる（脱出中は攻撃できない）。
+ * ゲームはこの画面からしか始められない。
  * props.onBack()
  * props.ar: { orientationRef, requestPermission }（App の useDeviceOrientation）
  */
@@ -27,6 +30,8 @@ export function ChildView({ onBack, ar }) {
   const { status, sendLocation } = channel
   const escape = useEscapeState({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
   const wakeLock = useWakeLock()
+  const escaped = escape.state === 'escaped'
+  const battle = useBattle({ disabled: escaped })
 
   // 自分の位置が更新されたら親に送る
   useEffect(() => {
@@ -87,10 +92,16 @@ export function ChildView({ onBack, ar }) {
     const level = distanceLevel(escape.distance)
     return (
       <>
-        <ArScene orientationRef={ar.orientationRef} />
+        <ArScene
+          orientationRef={ar.orientationRef}
+          sceneRef={battle.sceneRef}
+          onEnemySpawn={battle.handleEnemySpawn}
+          onItemCollect={battle.handleItemCollect}
+        />
         <div className="ui-layer">
+          <BattleHud battle={battle} disabled={escaped} />
           <div className={`distance-hud distance-${level}`}>親まで {formatDistance(escape.distance)}</div>
-          {escape.state === 'escaped' && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
+          {escaped && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
           {escape.justRevived && <RevivedBanner />}
         </div>
       </>

@@ -51,28 +51,3 @@
     opacity: 1;
   }
 }
-
-/* 見守りモードへのボタン（TAP TO START の下に控えめに出す） */
-.trackerButton {
-  margin-top: 5cqw; /* 余白も画像の幅に合わせる */
-  padding: 2cqw 6cqw;
-  font-size: 4cqw;
-  font-weight: bold;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  border-radius: 2rem;
-  cursor: pointer;
-}
-
-/* TAP TO START の下に出すお知らせ（センサー権限が拒否されたときなど） */
-.notice {
-  margin: 1rem auto 0;
-  max-width: 320px;
-  padding: 0.6rem 1rem;
-  font-size: 0.9rem;
-  color: #fff;
-  text-align: left;
-  background: rgba(198, 40, 40, 0.85);
-  border-radius: 0.5rem;
-}
