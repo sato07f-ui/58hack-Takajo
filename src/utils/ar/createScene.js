@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createHitEffect, updateHitEffects } from "./hitEffect";
 
 const _zee = new THREE.Vector3(0, 0, 1);
 const _euler = new THREE.Euler();
@@ -60,9 +61,15 @@ export const createScene = (canvas, { onFrame } = {}) => {
   const resetCube = () => testCube.position.copy(CUBE_HOME);
 
   // ===============================
-  // ★追加：ダメージを受けた時の演出関数
+  // ★ 追加: ゲーム状態の管理変数
   // ===============================
-  const playDamageEffect = () => {
+  let projectiles = []; // 飛翔中の魔法弾
+  let isDefeated = false; // 撃破状態フラグ
+
+  // ===============================
+  // ★ 変更: ダメージ演出（エフェクト呼び出し追加）
+  // ===============================
+  const playDamageEffect = (hitPosition) => {
     // 1. キューブを真っ白（発光）にする
     testCube.material.color.setHex(0xffffff);
 
@@ -73,6 +80,45 @@ export const createScene = (canvas, { onFrame } = {}) => {
         testCube.material.color.setHex(0xff5533);
       }
     }, 150);
+
+    // 3. キューブを揺らす（潰す変形）
+    testCube.scale.set(1.3, 0.8, 1.3);
+    setTimeout(() => {
+      if (running && !isDefeated) testCube.scale.set(1, 1, 1);
+    }, 100);
+
+    // 4. hitEffect.jsのエフェクトを発生させる
+    const targetPos = hitPosition || testCube.position;
+    createHitEffect(scene, camera, targetPos);
+  };
+
+  // ===============================
+  // ★ 追加: 魔法の発射関数
+  // ===============================
+  const shootMagic = (onHitCallback) => {
+    const projGeom = new THREE.SphereGeometry(0.1, 16, 16);
+    const projMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    const projectile = new THREE.Mesh(projGeom, projMat);
+
+    // ARなので「現在のカメラの位置・向き」を基準に、手前・少し下から発射させる
+    projectile.position.copy(camera.position);
+    projectile.translateY(-0.3); // カメラより少し下
+    projectile.translateZ(-0.5); // カメラより少し前
+
+    scene.add(projectile);
+
+    projectiles.push({
+      mesh: projectile,
+      target: testCube,
+      onHit: onHitCallback,
+    });
+  };
+
+  // ===============================
+  // ★ 追加: 撃破演出関数
+  // ===============================
+  const playDefeatEffect = () => {
+    isDefeated = true;
   };
 
   const resize = () => {
@@ -85,12 +131,49 @@ export const createScene = (canvas, { onFrame } = {}) => {
   resize();
   window.addEventListener("resize", resize);
 
+  // ===============================
+  // ★ 変更: アニメーションループ（飛翔・撃破・エフェクト更新）
+  // ===============================
+
   let rafId = 0;
   let running = true;
   const loop = () => {
     if (!running) return;
     onFrame?.(camera);
-    testCube.rotation.y += 0.01;
+
+    // 1. キューブのアニメーション（通常 or 撃破時）
+    if (!isDefeated) {
+      testCube.rotation.y += 0.01;
+    } else {
+      testCube.rotation.x += 0.1;
+      testCube.rotation.y += 0.1;
+      if (testCube.scale.x > 0.05) {
+        testCube.scale.multiplyScalar(0.9);
+      } else {
+        testCube.visible = false;
+      }
+    }
+
+    // 2. 魔法弾の追尾＆着弾判定
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const proj = projectiles[i];
+      proj.mesh.position.lerp(proj.target.position, 0.15); // 対象へ滑らかに移動
+
+      // 着弾判定（キューブサイズが 0.4 なので、距離 0.3 以下でヒットとする）
+      if (proj.mesh.position.distanceTo(proj.target.position) < 0.3) {
+        scene.remove(proj.mesh);
+        proj.mesh.geometry.dispose();
+        proj.mesh.material.dispose();
+        projectiles.splice(i, 1);
+
+        playDamageEffect(proj.mesh.position);
+        if (proj.onHit) proj.onHit(); // App.jsx側のHP減算を実行
+      }
+    }
+
+    // 3. hitEffect.js のエフェクトアニメーションを更新
+    updateHitEffects();
+
     renderer.render(scene, camera);
     rafId = requestAnimationFrame(loop);
   };
@@ -103,6 +186,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     moveCube,
     resetCube,
     playDamageEffect, // ★追加：App.jsxから呼び出せるように公開する
+    shootMagic, // ★ 追加: App.jsxから呼べるようにする
+    playDefeatEffect, // ★ 追加: App.jsxから呼べるようにする
     dispose() {
       running = false;
       cancelAnimationFrame(rafId);
