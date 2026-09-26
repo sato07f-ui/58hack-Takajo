@@ -10,11 +10,12 @@ import spinachUrl from '../../assets/spinach.glb?url'
  *            null の敵は画像認識では出現しない
  * detectClass: COCO-SSD の物体認識で出現させるときのクラス名（本物の物をカメラに映して出す特別な敵）
  * height: AR 空間で表示する高さ [m]（モデルの実寸に関係なくこの高さに揃える）
+ * dropItemId: 倒したときに落とすアイテム（src/utils/item/items.js の ITEMS のキー）
  */
 export const ENEMIES = [
-  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3 },
-  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.25 },
-  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: '/targets/spinach.mind', height: 0.35 }, // .mind 未作成
+  { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3, dropItemId: 'coin' },
+  { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.25, dropItemId: 'coin' },
+  { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: '/targets/spinach.mind', height: 0.35, dropItemId: 'coin' }, // .mind 未作成
   // 特別な敵: 本物のバナナを COCO-SSD で検出して出す（3D モデルは未作成なので仮モデル）
-  { id: 'banana', name: 'バナナ', modelUrl: null, targetUrl: null, detectClass: 'banana', height: 0.3 },
+  { id: 'banana', name: 'バナナ', modelUrl: null, targetUrl: null, detectClass: 'banana', height: 0.3, dropItemId: 'coin' },
 ]

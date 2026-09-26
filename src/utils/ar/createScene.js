@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { spawnItem, updateItems, clearItems } from './itemDrop'
+import { ITEMS } from '../item/items'
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -35,9 +36,10 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
 /**
  * Three.js の scene / camera / renderer を作り、描画ループを開始する。
  * onFrame(camera): 毎フレーム描画前に呼ばれる（向き追従などに使う）
+ * onItemCollect(item): 敵が落としたアイテムをプレイヤーが拾ったときに呼ばれる（item は ITEMS の要素）
  * 戻り値の dispose() を呼ぶと全て停止・破棄する。
  */
-export const createScene = (canvas, { onFrame } = {}) => {
+export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true, //背景を透明にしてカメラ映像を透かす
@@ -176,7 +178,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     for (const model of enemies) {
       _hitPos.copy(model.position)
       _hitPos.y += model.userData.enemy.height / 2
-      spawnItem(scene, _hitPos)
+      const item = ITEMS[model.userData.enemy.dropItemId]
+      if (item) spawnItem(scene, _hitPos, { item, onCollect: onItemCollect })
     }
     clearEnemies()
     isDefeated = false
@@ -197,7 +200,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
     onFrame?.(camera)
     updateDefeat()
     updateHitEffects()
-    updateItems()
+    updateItems(camera)
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
   }

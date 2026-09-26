@@ -39,6 +39,55 @@ body,
   margin: 0;
 }
 
+/* 手持ちのアイテム（右上） */
+.inventory {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  min-width: 90px;
+  padding: 10px;
+  border-radius: 8px;
+  color: white;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.inventory p {
+  margin: 0;
+}
+
+.inventory-title {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+/* アイテムを拾ったときのお知らせ */
+.item-toast {
+  position: absolute;
+  top: 30%;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  color: #ffd700;
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.6);
+  animation: item-toast 1.5s ease-out forwards;
+}
+
+@keyframes item-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  15%,
+  70% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .attack-button {
   pointer-events: auto;
   padding: 15px 30px;
