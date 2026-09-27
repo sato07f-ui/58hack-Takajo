@@ -13,7 +13,7 @@ import potionUrl from '../../assets/potion.glb?url'
 export const ITEMS = [
   { id: 'banana-boomerang', name: 'バナナブーメラン', modelUrl: bananaBoomerangUrl, height: 0.06 },
   { id: 'carrot-sword', name: 'にんじんソード', modelUrl: carrotSwordUrl, height: 0.3 },
-  { id: 'potion', name: 'ポーション', modelUrl: potionUrl, height: 0.2 }, // 割り当ては仮
+  { id: 'potion', name: 'ポーション', modelUrl: potionUrl, height: 0.2 }, // 同じ敵を 2 回続けて倒したときのボーナス（dropRule.js）
 ]
 
 /** id でアイテム定義を引く。見つからなければ null */

@@ -85,6 +85,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   let squashTimer = 0
   let isDefeated = false // 撃破演出中（縮んで消える途中）なら true
   let hasDropped = false // 今の敵のドロップ処理を済ませたら true
+  let defeatDropId = null // 撃破した敵が落とすアイテムの id（playDefeatEffect で決まる）
 
   /** モデルの中心（ワールド座標）を out に入れて返す */
   const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
@@ -284,9 +285,13 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     return true
   }
 
-  /** 撃破演出を開始する。以降、敵は回転しながら縮んで消え、消えたらアイテムを落とす（処理は loop 内） */
-  const playDefeatEffect = () => {
+  /**
+   * 撃破演出を開始する。以降、敵は回転しながら縮んで消え、消えたら dropId のアイテムを落とす（処理は loop 内）。
+   * dropId: 落とすアイテムの id（null なら落とさない）。省略時は敵ごとの drop
+   */
+  const playDefeatEffect = (dropId = enemyModel?.userData.enemy?.drop ?? null) => {
     if (!enemyModel) return
+    defeatDropId = dropId
     clearTimeout(squashTimer)
     isDefeated = true
     clearProjectiles()
@@ -318,7 +323,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
         // 敵が消えた直後に 1 回だけドロップを出す
         if (!hasDropped) {
           hasDropped = true
-          const item = findItem(enemyModel.userData.enemy?.drop)
+          const item = findItem(defeatDropId)
           if (item) spawnDrop(item, enemyModel.position)
         }
       }

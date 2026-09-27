@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { INITIAL_DROP_STATE, decideDrop } from '../item/dropRule'
 
 const ATTACK_DAMAGE = 20
 const COOLDOWN_MS = 1000
@@ -18,6 +19,7 @@ export function useBattle({ disabled = false } = {}) {
   // 敵の残り HP。表示は頭上の HP ゲージ（createScene）が担うので state ではなく ref で持ち、着弾コールバックから直接読み書きする
   const enemyHpRef = useRef(ENEMY_MAX_HP)
   const [isCooldown, setIsCooldown] = useState(false)
+  const dropStateRef = useRef(INITIAL_DROP_STATE) // 同じ敵を続けて倒した回数（ボーナスドロップ用）
 
   // 手持ちのアイテム: { [アイテムの id]: 個数 }
   const [inventory, setInventory] = useState({})
@@ -60,7 +62,10 @@ export function useBattle({ disabled = false } = {}) {
       sceneRef.current?.setEnemyHpRatio(nextHp / ENEMY_MAX_HP) // 敵の頭上の HP ゲージに反映する
       // HP が 0 なら撃破（消滅＋アイテムドロップ）。ダメージ演出（発光・変形・エフェクト）は着弾時に createScene 側で出る
       if (nextHp === 0) {
-        sceneRef.current?.playDefeatEffect()
+        // 落とすアイテムを決める（同じ敵を 2 回続けて倒すとポーション）
+        const { itemId, state } = decideDrop(dropStateRef.current, enemy)
+        dropStateRef.current = state
+        sceneRef.current?.playDefeatEffect(itemId)
         setEnemy(null) // 撃破演出中は攻撃できないようにする
       }
       navigator.vibrate?.(100) // PC や一部 iOS では動かないがエラーにはならない

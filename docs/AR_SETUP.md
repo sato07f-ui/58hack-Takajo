@@ -83,6 +83,17 @@ export default defineConfig({
 
 設定変更後は `npm run dev` を再起動する。初回の `npx cloudflared` は本体のダウンロードで 1〜2 分かかる。毎回すぐ使いたい場合は `winget install Cloudflare.cloudflared` で入れておく。
 
+### 1-5. 本番ビルドをトンネルで確認する（プレイ確認はこちら）
+```bash
+npm run tunnel:preview
+```
+`vite build` → `vite preview`（`http://localhost:4173`）→ クイックトンネルを 1 コマンドで行い、表示された `https://xxxx.trycloudflare.com` をスマホで開く（中身は `scripts/tunnel-preview.mjs`）。Ctrl+C で preview とトンネルの両方が止まる。
+
+- `npm run dev` + `npm run tunnel` では、開発サーバーとの WebSocket が切れると Vite の開発用クライアントがページを自動でリロードする（プレイ中に勝手にリロードされる原因）。本番ビルドにはこのクライアントが入らないので起きない。
+- 本番と同じく、開発用コード（`VITE_DEV_ROOM_CODE`）と計測ログ（`[perf]`）は無効になる。親なしで試したいときは `npm run dev` を使う。
+- URL が表示されてから実際につながるまで 30 秒〜1 分ほどかかることがある。
+- コードを変えたら、止めてから `npm run tunnel:preview` をやり直す（自動では反映されない）。
+
 ---
 
 ## 2. ファイル構成
