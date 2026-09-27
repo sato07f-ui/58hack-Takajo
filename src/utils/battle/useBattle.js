@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { INITIAL_DROP_STATE, decideDrop } from '../item/dropRule'
 import { canTakeHit, nextAttackDelay } from './enemyAttackRule'
+import { MAX_LIVES, POTION_ITEM_ID, canDrinkPotion, gainLife, loseLife } from './lifeRule'
 
 const ATTACK_DAMAGE = 20
 export const COOLDOWN_MS = 1000
@@ -8,13 +9,19 @@ const ENEMY_MAX_HP = 100
 const ITEM_TOAST_MS = 1500 // 「〇〇を手に入れた！」を出しておく時間
 
 /**
- * AR バトルの状態（敵・攻撃のクールダウン・手持ちアイテム・敵の攻撃の予約とプレイヤーの被弾回数）を管理する hook。
- * 引数: { disabled }（true の間は攻撃できず、敵からも攻撃されない。脱出中など）
- * 返り値: { sceneRef, enemy, isCooldown, inventory, itemToast, playerHits, handleEnemySpawn, handleItemCollect, handleAttack }
- *   playerHits: 敵の弾に当たった回数（被弾演出のきっかけ。残機を付けるときはここを残機に置き換える）
+ * AR バトルの状態（敵・攻撃のクールダウン・手持ちアイテム・敵の攻撃の予約・プレイヤーのライフ）を管理する hook。
+ * 引数: { disabled, onGameOver }
+ *   disabled: true の間は攻撃できず、敵からも攻撃されない（脱出中など）。ゲームオーバー中も同じく止まる
+ *   onGameOver(): ライフが 0 になった瞬間に 1 回呼ばれる（任意）
+ * 返り値: { sceneRef, enemy, isCooldown, inventory, itemToast, playerHits, lives, gameOver,
+ *           handleEnemySpawn, handleItemCollect, handleAttack, drinkPotion, revive }
+ *   playerHits: 敵の弾に当たった回数（被弾演出のきっかけ）
+ *   lives: 残りのライフ（0〜MAX_LIVES）。gameOver: lives が 0
+ *   drinkPotion(): 手持ちのポーションを 1 つ使ってライフを 1 回復する（使えないときは何もしない）
+ *   revive(): ライフを MAX_LIVES に戻す（親に近づいて復活したときに呼ぶ）
  *   sceneRef / handleEnemySpawn / handleItemCollect は ArScene に渡す
  */
-export function useBattle({ disabled = false } = {}) {
+export function useBattle({ disabled = false, onGameOver } = {}) {
   const sceneRef = useRef(null) // Three.js（3D空間）へ命令を送るためのパイプ
 
   const [enemy, setEnemy] = useState(null) // いま出ている敵（ENEMIES の要素）。いなければ null
@@ -32,6 +39,16 @@ export function useBattle({ disabled = false } = {}) {
   const lastHitAtRef = useRef(null) // 最後に被弾した時刻（無敵時間の判定用）
   const attackCountRef = useRef(0) // 今の敵が攻撃した回数（0 なら次が最初の攻撃）
 
+  const [lives, setLives] = useState(MAX_LIVES)
+  // 被弾コールバック（useCallback で固定）から最新のライフを読むため、state と同じ値を ref にも持つ
+  const livesRef = useRef(MAX_LIVES)
+  const gameOver = lives === 0
+  const inactive = disabled || gameOver // 攻撃も敵の攻撃も止める
+  const onGameOverRef = useRef(onGameOver)
+  useEffect(() => {
+    onGameOverRef.current = onGameOver
+  })
+
   // クールダウンのタイマー
   useEffect(() => {
     if (!isCooldown) return
@@ -46,20 +63,24 @@ export function useBattle({ disabled = false } = {}) {
     return () => clearTimeout(timer)
   }, [itemToast])
 
-  // 敵の弾が手元に届いた。無敵時間中でなければ被弾にする
+  // 敵の弾が手元に届いた。無敵時間中・ゲームオーバー中でなければ被弾にしてライフを 1 減らす
   const handlePlayerHit = useCallback(() => {
     const now = performance.now()
-    if (!canTakeHit(lastHitAtRef.current, now)) return
+    if (livesRef.current === 0 || !canTakeHit(lastHitAtRef.current, now)) return
     lastHitAtRef.current = now
     setPlayerHits((n) => n + 1)
+    const next = loseLife(livesRef.current)
+    livesRef.current = next
+    setLives(next)
     navigator.vibrate?.([80, 40, 80]) // 魔法の着弾（100ms）と区別できるよう 2 回震わせる
+    if (next === 0) onGameOverRef.current?.()
   }, [])
 
   // 敵の攻撃を予約する。攻撃が終わる（attackSeq が増える）たびに次を予約し直す。
-  // 敵がいない（撃破後を含む）・脱出中は攻撃しない。止まるときは溜めも飛んでいる弾も消す
+  // 敵がいない（撃破後を含む）・脱出中・ゲームオーバー中は攻撃しない。止まるときは溜めも飛んでいる弾も消す
   useEffect(() => {
     const scene = sceneRef.current // 敵が出ている時点で作られている（ArScene がマウント中）
-    if (!enemy || disabled || !scene) return
+    if (!enemy || inactive || !scene) return
     const timer = setTimeout(() => {
       attackCountRef.current += 1
       const started = scene.enemyAttack({
@@ -72,7 +93,7 @@ export function useBattle({ disabled = false } = {}) {
       clearTimeout(timer)
       scene.cancelEnemyAttack()
     }
-  }, [enemy, disabled, attackSeq, handlePlayerHit])
+  }, [enemy, inactive, attackSeq, handlePlayerHit])
 
   // 敵が出現したら、その敵と戦う（HP を満タンにする）
   const handleEnemySpawn = (spawned) => {
@@ -90,7 +111,7 @@ export function useBattle({ disabled = false } = {}) {
 
   // 魔法を撃つ。HP 減算と演出は魔法弾が着弾した瞬間に行う
   const handleAttack = () => {
-    if (disabled || !enemy || isCooldown) return // 撃てる回数に制限はなく、クールダウンを待てば何度でも撃てる
+    if (inactive || !enemy || isCooldown) return // 撃てる回数に制限はなく、クールダウンを待てば何度でも撃てる
 
     const fired = sceneRef.current?.shootMagic(() => {
       const nextHp = Math.max(enemyHpRef.current - ATTACK_DAMAGE, 0)
@@ -111,6 +132,27 @@ export function useBattle({ disabled = false } = {}) {
     setIsCooldown(true)
   }
 
+  // 手持ちのポーションを 1 つ使ってライフを 1 回復する
+  const drinkPotion = () => {
+    const potions = inventory[POTION_ITEM_ID] ?? 0
+    if (!canDrinkPotion(livesRef.current, potions)) return
+    setInventory((prev) => {
+      const { [POTION_ITEM_ID]: count = 0, ...rest } = prev
+      return count > 1 ? { ...rest, [POTION_ITEM_ID]: count - 1 } : rest // 0 個になったら一覧から消す
+    })
+    const next = gainLife(livesRef.current)
+    livesRef.current = next
+    setLives(next)
+    navigator.vibrate?.(50)
+  }
+
+  // 復活：ライフを満タンに戻す
+  const revive = () => {
+    livesRef.current = MAX_LIVES
+    setLives(MAX_LIVES)
+    lastHitAtRef.current = null
+  }
+
   return {
     sceneRef,
     enemy,
@@ -118,8 +160,12 @@ export function useBattle({ disabled = false } = {}) {
     inventory,
     itemToast,
     playerHits,
+    lives,
+    gameOver,
     handleEnemySpawn,
     handleItemCollect,
     handleAttack,
+    drinkPotion,
+    revive,
   }
 }
