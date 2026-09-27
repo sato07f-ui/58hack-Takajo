@@ -15,6 +15,9 @@ import { LocationPermissionHint } from './LocationPermissionHint'
 import { EscapedScreen, GameOverScreen, RevivedBanner } from './EscapedScreen'
 import { BattleHud } from '../battle/BattleHud'
 import { DungeonEntrance } from '../dungeon/DungeonEntrance'
+import { TutorialHud } from '../tutorial/TutorialHud'
+import { useTutorial } from '../../utils/tutorial/useTutorial'
+import { preloadTutorial } from '../../utils/tutorial/preloadTutorial'
 import { BossGate } from '../boss/BossGate'
 
 // 扉の演出の段階 → ラスボスの段階（ArScene の bossPhase）
@@ -31,7 +34,9 @@ const BOSS_PHASE_BY_GATE_STEP = {
 /**
  * 子供の画面。親の横でコードを入力して接続し、以後はコードを表示しない。
  * 接続後に「ダンジョンへ入る」で AR バトルを開き、離れすぎると脱出状態のオーバーレイを重ねる（脱出中は攻撃できない）。
- * ゲームはこの画面からしか始められない。入るときは、カメラと認識モデルの準備が終わるまで扉の演出（DungeonEntrance）を重ねる。
+ * ゲームはこの画面からしか始められない。最初の入場では、認識モデルの準備の間にチュートリアルのにんじんと戦わせ、
+ * 倒した後に扉の演出（DungeonEntrance）を挟んで本番に入る。2 回目以降は入るときに扉を重ね、準備が終わったら開く
+ * （docs/OFFLINE_TUTORIAL_PLAN.md）。
  * 開発用コード（VITE_DEV_ROOM_CODE、dev のみ）を入力したときは親とつながずにプレイでき、脱出も起きない。
  * props.onBack()
  * props.ar: { orientationRef, requestPermission }（App の useDeviceOrientation）
@@ -42,6 +47,7 @@ export function ChildView({ onBack, ar }) {
   const [inDungeon, setInDungeon] = useState(false)
   const [entering, setEntering] = useState(false) // 扉の演出中
   const [arReady, setArReady] = useState(false) // ArScene の準備（モデルのダウンロード含む）が終わった
+  const [sceneReady, setSceneReady] = useState(false) // カメラが映り、チュートリアルの敵を出し終わった
   const [sensorDenied, setSensorDenied] = useState(false)
   const devMode = isDevRoomCode(roomCode)
   const geo = useGeolocation()
@@ -64,6 +70,12 @@ export function ChildView({ onBack, ar }) {
   const [gateStep, setGateStep] = useState('appear') // 扉の演出の段階（BossGate の TIMELINE）
   // ラスボスの段階（ArScene の bossPhase）。ダンジョンに入る前に呼ばれた場合は、入った瞬間に扉の演出を始める
   const bossPhase = !boss.summoned || !inDungeon ? 'none' : BOSS_PHASE_BY_GATE_STEP[gateStep]
+  const tutorial = useTutorial({
+    sceneReady,
+    enemy: battle.enemy,
+    bossActive: bossPhase !== 'none',
+    playerHits: battle.playerHits,
+  })
 
   /** ラスボスが出現した（HP の初期化などは onEnemySpawn → battle.handleEnemySpawn で済む。ラスボス固有の処理はここにつなぐ） */
   function handleBossAppear() {}
@@ -91,8 +103,11 @@ export function ChildView({ onBack, ar }) {
       return
     }
     setSensorDenied(false)
+    const withTutorial = tutorial.begin()
+    if (withTutorial) preloadTutorial() // カメラの許可を待つ間に、チュートリアルの敵とドロップを読み込んでおく
     setArReady(false)
-    setEntering(true) // 準備の間は扉の演出を見せる
+    setSceneReady(false)
+    setEntering(!withTutorial) // チュートリアルなしの入場は、準備の間に扉の演出を見せる
     setInDungeon(true) // 'unsupported'（PC ブラウザ等）はカメラ確認のため進める
   }
 
@@ -134,14 +149,24 @@ export function ChildView({ onBack, ar }) {
         <ArScene
           orientationRef={ar.orientationRef}
           sceneRef={battle.sceneRef}
-          onEnemySpawn={battle.handleEnemySpawn}
-          onItemCollect={battle.handleItemCollect}
+          onEnemySpawn={(enemy) => {
+            battle.handleEnemySpawn(enemy)
+            tutorial.handleEnemySpawn(enemy, battle.playerHits)
+          }}
+          onItemCollect={(item) => {
+            battle.handleItemCollect(item)
+            tutorial.handleItemCollect()
+          }}
           onReady={() => setArReady(true)}
+          onSceneReady={() => setSceneReady(true)}
+          tutorial={tutorial.running}
+          holdScan={tutorial.holdScan}
           bossPhase={bossPhase}
           onBossAppear={handleBossAppear}
         />
         <div className="ui-layer">
           <BattleHud battle={battle} disabled={escaped} />
+          <TutorialHud caption={tutorial.caption} />
           <div className={`distance-hud distance-${level}`}>
             {devMode ? '開発用（親なし）' : `親まで ${formatDistance(escape.distance)}`}
           </div>
@@ -151,6 +176,8 @@ export function ChildView({ onBack, ar }) {
           {bossPhase !== 'none' && gateStep !== 'done' && <BossGate onStep={setGateStep} />}
         </div>
         {entering && <DungeonEntrance ready={arReady} onDone={() => setEntering(false)} />}
+        {/* チュートリアルの後、本番のダンジョンに入る切り替え演出。認識の準備が終わるまで開かない */}
+        {tutorial.phase === 'door' && <DungeonEntrance fadeIn ready={arReady} onDone={tutorial.handleDoorDone} />}
       </>
     )
   }
