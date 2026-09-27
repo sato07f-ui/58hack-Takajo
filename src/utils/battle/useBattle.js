@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { INITIAL_DROP_STATE, decideDrop } from '../item/dropRule'
 
 const ATTACK_DAMAGE = 20
-const COOLDOWN_MS = 1000
+export const COOLDOWN_MS = 1000
 const ENEMY_MAX_HP = 100
 const ITEM_TOAST_MS = 1500 // 「〇〇を手に入れた！」を出しておく時間
 

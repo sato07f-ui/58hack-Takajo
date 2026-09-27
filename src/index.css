@@ -147,95 +147,180 @@ code {
 }
 
 /* --- 見守りモード --- */
+/* ===== 見守りモード（役割選択・コード入力・待機画面）: タイトル画面に合わせたポップな UI ===== */
 .tracker-screen {
+  --pop-blue: #346bc8; /* タイトル画面の背景色 */
+  --pop-yellow: #f5cd00; /* タイトルロゴの黄色 */
+  --pop-yellow-dark: #c9a400;
+  --pop-navy: #1b2a4a; /* ロゴの影・ボタンの文字 */
   min-height: 100dvh;
   box-sizing: border-box;
-  padding: 24px 16px;
+  /* 背景画像の上の野菜・下の親子のイラストに重ならないよう、上下を広めに空ける
+     （画像は 9:16。画面に収めたときの高さ ≒ 幅 × 16/9 の上 15%・下 17% にイラストがある） */
+  padding: max(32px, 30vw) 20px max(40px, 36vw);
   display: grid;
   place-content: center;
-  gap: 16px;
+  justify-items: center;
+  gap: 20px;
   color: #fff;
   text-align: center;
+  /* タイトル画面と同じ背景（野菜と親子のイラスト）。切れないよう画面に収め、余る所は同じ青で埋める */
+  background: var(--pop-blue) url('./assets/background_pic.png') center / contain no-repeat;
+  font-family: 'M PLUS Rounded 1c', system-ui, sans-serif;
+  font-weight: 700;
 }
 .tracker-screen h1 {
   color: #fff;
-  font-size: 28px;
-  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  margin: 0 0 4px;
+  /* ロゴのように、ネイビーの影を右下にずらして立体的に */
+  text-shadow: 3px 3px 0 var(--pop-navy);
+}
+.tracker-screen p {
+  line-height: 1.6;
 }
 .tracker-actions {
   display: grid;
-  gap: 12px;
+  gap: 18px;
+  justify-items: center;
+  width: 100%;
 }
+
+/* メインボタン: 黄色のピル型。下の濃い影で「ポチッ」と押せそうなおもちゃのボタンにする */
 .tracker-screen button {
-  font-size: 18px;
-  padding: 12px 20px;
-  border-radius: 12px;
+  width: min(100%, 320px);
+  font-family: inherit;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--pop-navy);
+  background: var(--pop-yellow);
+  border: 3px solid var(--pop-navy);
+  border-radius: 9999px;
+  padding: 14px 24px;
+  box-shadow: 0 6px 0 var(--pop-navy);
+  cursor: pointer;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, background 0.15s;
 }
-.tracker-link {
+.tracker-screen button:active:not(:disabled) {
+  transform: translateY(6px); /* 影の分だけ沈み込む */
+  box-shadow: 0 0 0 var(--pop-navy);
+  background: var(--pop-yellow-dark);
+}
+.tracker-screen button:disabled {
+  cursor: default;
+  color: rgba(27, 42, 74, 0.45);
+  background: #d9e2f2;
+  border-color: rgba(27, 42, 74, 0.35);
+  box-shadow: 0 6px 0 rgba(27, 42, 74, 0.25);
+}
+
+/* もどる・終了する: ボタンではなく白い下線の文字 */
+.tracker-screen .tracker-link {
+  width: auto;
   background: none;
   border: none;
-  color: #bbb;
+  box-shadow: none;
+  padding: 4px 8px;
+  color: #fff;
   text-decoration: underline;
-  font-size: 15px !important;
+  text-underline-offset: 4px;
+  font-size: 16px;
+  font-weight: 700;
 }
+.tracker-screen .tracker-link:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  background: none;
+  opacity: 0.7;
+}
+
+/* コード入力欄: 白いピル型で、太く大きな文字 */
 .tracker-input {
-  font-size: 24px;
-  font-family: var(--mono);
+  font-family: 'M PLUS Rounded 1c', system-ui, sans-serif; /* 等幅フォントは細いので、丸ゴシックの太字にする */
+  font-size: 26px;
+  font-weight: 800;
   letter-spacing: 0.15em;
   text-align: center;
   text-transform: uppercase;
-  padding: 12px;
-  border-radius: 12px;
-  border: 2px solid #555;
-  background: #111;
-  color: #fff;
+  padding: 14px 20px;
+  border-radius: 9999px;
+  border: 4px solid var(--pop-yellow);
+  background: #fff;
+  color: var(--pop-navy);
   width: min(100%, 320px);
   box-sizing: border-box;
-  justify-self: center;
+  outline: none;
+  box-shadow: inset 0 3px 0 rgba(27, 42, 74, 0.12);
+}
+.tracker-input::placeholder {
+  color: rgba(27, 42, 74, 0.35);
+  font-weight: 700;
+}
+.tracker-input:focus {
+  box-shadow: inset 0 3px 0 rgba(27, 42, 74, 0.12), 0 0 0 5px rgba(245, 205, 0, 0.45);
 }
 .tracker-code {
   font-family: var(--mono);
   letter-spacing: 0.1em;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.tracker-code strong {
+  color: var(--pop-yellow);
 }
 .tracker-note {
-  color: #bbb;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 14px;
+  font-weight: 500;
 }
 .tracker-error {
-  color: #ff7a7a;
+  color: #b42318;
+  background: #fff;
+  border-radius: 16px;
+  padding: 8px 14px;
   font-size: 14px;
 }
 .tracker-status {
   font-size: 14px;
-  color: #bbb;
+  color: rgba(255, 255, 255, 0.85);
   display: grid;
   gap: 4px;
 }
 .tracker-stale {
-  color: #ffcc66;
+  color: #fff3a3;
 }
 
 /* 距離表示。距離に応じて色を変える */
 .distance-display {
   padding: 24px 16px;
-  border-radius: 20px;
-  border: 3px solid var(--distance-color, #777);
-  background: color-mix(in srgb, var(--distance-color, #777) 15%, transparent);
+  border-radius: 28px;
+  border: 4px solid var(--distance-color, #777);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 0 rgba(27, 42, 74, 0.35);
   display: grid;
   gap: 6px;
   transition: border-color 0.5s, background 0.5s;
 }
 .distance-value {
   font-size: 48px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--distance-color, #fff);
+  /* 青い背景でも読めるよう、ネイビーで縁取る */
+  -webkit-text-stroke: 1.5px #1b2a4a;
+  paint-order: stroke fill;
+  text-shadow: 2px 3px 0 #1b2a4a;
   font-variant-numeric: tabular-nums;
 }
 .distance-error,
 .distance-note {
   font-size: 14px;
-  color: #bbb;
+  color: rgba(255, 255, 255, 0.85);
 }
 /* ダンジョン内（AR 画面）の上に出す小さな距離表示 */
 .distance-hud {
@@ -347,18 +432,20 @@ code {
 
 /* 親画面: 子供が脱出中の警告 */
 .child-escaped-banner {
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 2px solid #ff7a7a;
-  background: rgba(255, 60, 60, 0.15);
+  padding: 14px 18px;
+  border-radius: 20px;
+  border: 4px solid #e5484d;
+  background: #fff;
+  color: #1b2a4a;
+  box-shadow: 0 6px 0 rgba(27, 42, 74, 0.35);
   display: grid;
   gap: 6px;
   font-size: 14px;
 }
 .child-escaped-title {
   font-size: 18px;
-  font-weight: 700;
-  color: #ff7a7a;
+  font-weight: 800;
+  color: #d92d20;
 }
 
 .distance-near { --distance-color: #4ade80; }
