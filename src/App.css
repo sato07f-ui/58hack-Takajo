@@ -46,6 +46,57 @@ body,
   opacity: 0.8;
 }
 
+/* ポーションの「つかう」ボタン（.ui-layer は pointer-events: none なので、押せるように戻す） */
+.inventory-use {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: bold;
+  background: #e0406a;
+  pointer-events: auto;
+}
+
+.inventory-use:disabled {
+  opacity: 0.4;
+}
+
+/* プレイヤーのライフ（左上）。減った分は灰色のハートで残す */
+.lives {
+  position: absolute;
+  top: 12px;
+  left: 12px; /* 上中央の「親まで ○ m」と重ならないよう、左に詰める */
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  animation: lives-pop 0.3s ease-out;
+}
+
+.lives-heart {
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #ff4d6d;
+  text-shadow: 0 0 6px rgba(255, 77, 109, 0.8);
+}
+
+.lives-heart--lost {
+  color: #555;
+  text-shadow: none;
+}
+
+@keyframes lives-pop {
+  0% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 /* アイテムを拾ったときのお知らせ */
 .item-toast {
   position: absolute;
