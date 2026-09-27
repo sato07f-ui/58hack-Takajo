@@ -4,6 +4,7 @@ import { loadModel } from '../item/loadModel'
 import { findItem } from '../item/items'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { createHpBar } from './hpBar'
+import { ENEMY_FOLLOW } from './enemyFollow'
 import { perfStart } from '../debug/perfLog' // [perf]
 
 const _zee = new THREE.Vector3(0, 0, 1)
@@ -12,7 +13,6 @@ const _q0 = new THREE.Quaternion()
 const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸 -90° 補正
 const DEG = Math.PI / 180
 
-const SPAWN_DISTANCE = 0.5 // カメラから敵までの距離 [m]
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
 const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
 const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
@@ -33,6 +33,14 @@ const _center = new THREE.Vector3()
 const _barPos = new THREE.Vector3()
 const _collectPoint = new THREE.Vector3(0, -0.15, -0.3) // ドロップの吸い寄せ先（カメラローカル：画面中央やや下、30cm 手前）
 const _target = new THREE.Vector3() // 吸い寄せ先のワールド座標（毎フレーム計算）
+const _up = new THREE.Vector3(0, 1, 0)
+const _faceMatrix = new THREE.Matrix4()
+const _modelUp = new THREE.Vector3()
+const _screenUp = new THREE.Vector3() // 画面の上方向（ワールド座標）
+const _followTarget = new THREE.Vector3() // 追従先（敵の中心を置きたい位置）
+const _prevAnchor = new THREE.Vector3()
+const _screenCenterDir = new THREE.Vector3(0, 0, -1) // カメラローカルの画面中央方向
+const _lineStart = new THREE.Vector3(0, -0.08, -0.15) // 追従線の始点（カメラローカル：手元のやや下）
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
 
@@ -77,6 +85,15 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   scene.add(camera) // カメラの子の光を描画に含めるため
 
   let enemyModel = null // 出ている敵のモデル（同時に出るのは 1 体だけ）
+  // 手元から敵の中心までの線（位置の調整用。ENEMY_FOLLOW.showLine で表示を切り替える）
+  const followLine = new THREE.Line(
+    new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3)),
+    new THREE.LineBasicMaterial({ color: 0xff00ff, depthTest: false }),
+  )
+  followLine.renderOrder = 1 // 敵より手前に描く
+  followLine.frustumCulled = false // 頂点を毎フレーム書き換えるので、古い範囲で消されないようにする
+  followLine.visible = false
+  scene.add(followLine)
   let dropModel = null // 出ているドロップアイテムのモデル（同時に出るのは 1 個だけ）
   const projectiles = [] // 飛翔中の魔法弾 { mesh, target, onHit }
   let rafId = 0
@@ -106,8 +123,59 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     return model
   }
 
+  /** 画面の上方向（ワールド座標）を _screenUp に入れて返す */
+  const screenUp = () => _screenUp.copy(_up).applyQuaternion(camera.quaternion)
+
   /**
-   * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE 先に敵を出す。
+   * 敵の顔（+Z）をカメラに向け、頭を画面の上に向ける。見上げても見下ろしても、端末を傾けても正面が見える。
+   * 世界の真上（+Y）を基準にすると、真下付近を見たときに少しの傾きで上下逆になるため、画面の上方向を基準にする。
+   * 回転の中心はモデルの中心（userData.anchor）。原点は足元なので、回した分だけ足元の位置をずらす
+   */
+  const faceCamera = (model) => {
+    const { anchor, enemy } = model.userData
+    // Matrix4.lookAt(eye, target) は -Z を target に向けるので、逆向きに渡して +Z をカメラに向ける
+    _faceMatrix.lookAt(camera.position, anchor, screenUp())
+    model.quaternion.setFromRotationMatrix(_faceMatrix)
+    // 足元 = 中心から「モデルの上方向」に身長の半分だけ下
+    model.position.copy(anchor).addScaledVector(_modelUp.copy(_up).applyQuaternion(model.quaternion), -enemy.height / 2)
+  }
+
+  /**
+   * 敵の中心（userData.anchor）を、カメラから伸びる線の上の目標位置へ寄せる。
+   * 線の向きは出現時の画面位置（userData.localDir）、距離・ずらし・追従の速さは ENEMY_FOLLOW で決まる
+   */
+  const followCamera = (model) => {
+    const { anchor, localDir } = model.userData
+    const { distance, offsetX, offsetY, smooth, keepSpawnDirection } = ENEMY_FOLLOW
+    // カメラローカルで目標を作り、カメラの向き・位置でワールド座標にする
+    _followTarget
+      .copy(keepSpawnDirection ? localDir : _screenCenterDir)
+      .multiplyScalar(distance)
+    _followTarget.x += offsetX
+    _followTarget.y += offsetY
+    _followTarget.applyQuaternion(camera.quaternion).add(camera.position)
+
+    _prevAnchor.copy(anchor)
+    anchor.lerp(_followTarget, smooth)
+    // 撃破演出中は向きを変えない（faceCamera を呼ばない）ので、動いた分だけ位置をずらして一緒に運ぶ
+    model.position.add(_prevAnchor.sub(anchor).negate())
+  }
+
+  /** 追従線（手元 → 敵の中心）を今の位置に合わせる。ENEMY_FOLLOW.showLine が false か敵がいなければ隠す */
+  const updateFollowLine = () => {
+    followLine.visible = Boolean(ENEMY_FOLLOW.showLine && enemyModel?.visible)
+    if (!followLine.visible) return
+    const points = followLine.geometry.attributes.position
+    _followTarget.copy(_lineStart).applyQuaternion(camera.quaternion).add(camera.position)
+    points.setXYZ(0, _followTarget.x, _followTarget.y, _followTarget.z)
+    const { anchor } = enemyModel.userData
+    points.setXYZ(1, anchor.x, anchor.y, anchor.z)
+    points.needsUpdate = true
+  }
+
+  /**
+   * 画面上の点 (screenX, screenY) の方向、カメラから ENEMY_FOLLOW.distance 先に敵を出す。
+   * 以降はカメラに追従し、画面の同じ位置に居続ける（followCamera）。
    * 既に敵が出ていれば先に消してから出す。
    * enemy: ENEMIES の要素
    */
@@ -116,7 +184,9 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     _ndc.set((screenX / window.innerWidth) * 2 - 1, -(screenY / window.innerHeight) * 2 + 1)
     camera.updateMatrixWorld()
     _raycaster.setFromCamera(_ndc, camera)
-    const center = _raycaster.ray.at(SPAWN_DISTANCE, new THREE.Vector3())
+    const center = _raycaster.ray.at(ENEMY_FOLLOW.distance, new THREE.Vector3())
+    // 追従用に、レイの向きをカメラローカルで覚えておく（画面上のどこに出たか）
+    const localDir = _raycaster.ray.direction.clone().applyQuaternion(camera.quaternion.clone().invert())
 
     const endLoad = perfStart(`${enemy.id} のモデル読み込み（検出 → 表示）`) // [perf]
     const model = await loadEnemyModel(enemy.modelUrl)
@@ -124,12 +194,11 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     if (!running) return null // 読み込み中に dispose された
     prepareModel(model, enemy.height)
 
-    // 原点が足元なので、モデルの中心がレイ上の点に来るよう半分下げる
-    model.position.set(center.x, center.y - enemy.height / 2, center.z)
-    // 顔（+Z）をカメラに向ける。水平方向だけ回して傾かないようにする
-    model.lookAt(camera.position.x, model.position.y, camera.position.z)
-
+    // モデルの中心をレイ上の点に置き、顔をカメラに向ける（以降も毎フレーム追従して向け直す）
     model.userData.enemy = enemy
+    model.userData.anchor = center
+    model.userData.localDir = localDir
+    faceCamera(model)
     // HP ゲージは敵の子にすると変形・回転に巻き込まれるので scene に直接置き、毎フレーム頭上に合わせる
     model.userData.hpBar = createHpBar()
     clearEnemy() // 前の敵が残っていれば入れ替える
@@ -219,8 +288,9 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   /** HP ゲージを敵の頭上に合わせ、減る様子を 1 フレーム進める */
   const updateHpBar = () => {
     if (!enemyModel) return
-    _barPos.copy(enemyModel.position)
-    _barPos.y += enemyModel.userData.enemy.height + HP_BAR_GAP // 原点が足元なので、身長ぶん上が頭のてっぺん
+    // 中心から画面の上方向に身長の半分だけ行ったところが頭のてっぺん
+    const { anchor, enemy } = enemyModel.userData
+    _barPos.copy(anchor).addScaledVector(screenUp(), enemy.height / 2 + HP_BAR_GAP)
     enemyModel.userData.hpBar.update(camera, _barPos)
   }
 
@@ -346,11 +416,19 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
       }
     }
 
-    // 3. HP ゲージを頭上に追従させ、hitEffect.js のリング・粒子を進める
+    // 3. 敵をカメラに追従させ、正面をカメラに向け続ける（撃破演出中は回転させたいので向きは変えない）。
+    //    onFrame でカメラの向きが変わった後に呼ぶ
+    if (enemyModel) {
+      followCamera(enemyModel)
+      if (!isDefeated) faceCamera(enemyModel)
+    }
+    updateFollowLine()
+
+    // 4. HP ゲージを頭上に追従させ、hitEffect.js のリング・粒子を進める
     updateHpBar()
     updateHitEffects()
 
-    // 4. ドロップの演出：しばらく足元で回り、その後プレイヤーの手元へ吸い寄せられて消える
+    // 5. ドロップの演出：しばらく足元で回り、その後プレイヤーの手元へ吸い寄せられて消える
     if (dropModel) {
       const data = dropModel.userData
       if (data.state === 'idle') {
@@ -392,6 +470,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
       clearTimeout(squashTimer)
       window.removeEventListener('resize', resize)
       clearEnemy()
+      followLine.geometry.dispose()
+      followLine.material.dispose()
       renderer.dispose()
     },
   }
