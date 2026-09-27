@@ -7,6 +7,7 @@ import { createHitEffect, updateHitEffects } from './hitEffect'
 import { createHpBar } from './hpBar'
 import { ENEMY_FOLLOW } from './enemyFollow'
 import { createBossSpotlight } from './bossSpotlight'
+import { ATTACK_WINDUP_MS } from '../battle/enemyAttackRule'
 import { perfStart } from '../debug/perfLog' // [perf]
 
 const _zee = new THREE.Vector3(0, 0, 1)
@@ -29,6 +30,12 @@ const DROP_IDLE_MS = 800 // ドロップが足元で回って見えている時�
 const DROP_ATTRACT_LERP = 0.12 // 吸い寄せ中に毎フレーム手元へ寄る割合（魔法弾より少し遅い）
 const DROP_ATTRACT_SHRINK = 0.93 // 吸い寄せ中に毎フレーム縮む倍率
 const DROP_COLLECT_DISTANCE = 0.05 // 手元からこの距離 [m] まで来たら回収完了
+const ENEMY_SHOT_LERP = 0.07 // 敵弾が毎フレーム手元へ寄る割合（魔法弾より遅くして、飛んでくるのを見せる）
+const ENEMY_SHOT_HIT_DISTANCE = 0.05 // 手元からこの距離 [m] まで来たら被弾
+const ENEMY_SHOT_RADIUS = 0.04 // 敵弾の半径 [m]
+const ENEMY_SHOT_COLOR = 0xff3366
+const WINDUP_BLINK_MS = 100 // 溜め中に赤く点滅する周期の半分
+const WINDUP_SWELL = 1.1 // 溜め中に膨らむ倍率
 const _raycaster = new THREE.Raycaster()
 const _ndc = new THREE.Vector2()
 const _box = new THREE.Box3()
@@ -36,7 +43,8 @@ const _size = new THREE.Vector3()
 const _center = new THREE.Vector3()
 const _barPos = new THREE.Vector3()
 const _collectPoint = new THREE.Vector3(0, -0.15, -0.3) // ドロップの吸い寄せ先（カメラローカル：画面中央やや下、30cm 手前）
-const _target = new THREE.Vector3() // 吸い寄せ先のワールド座標（毎フレーム計算）
+const _target = new THREE.Vector3() // 吸い寄せ先・敵弾の行き先のワールド座標（毎フレーム計算）
+const _playerPoint = new THREE.Vector3(0, -0.03, -0.2) // 敵弾の行き先（カメラローカル：画面中央やや下、20cm 手前）
 const _up = new THREE.Vector3(0, 1, 0)
 const _faceMatrix = new THREE.Matrix4()
 const _modelUp = new THREE.Vector3()
@@ -48,6 +56,7 @@ const _lineStart = new THREE.Vector3(0, -0.08, -0.15) // 追従線の始点（�
 const _toCamera = new THREE.Vector3()
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
+const _red = new THREE.Color(0xaa0000) // 溜め中の emissive
 
 /**
  * DeviceOrientation の値をカメラの quaternion に反映する。
@@ -64,6 +73,7 @@ export function applyDeviceOrientation(camera, { alpha, beta, gamma }, screenAng
  * Three.js の scene / camera / renderer を作り、描画ループを開始する。
  * onFrame(camera): 毎フレーム描画前に呼ばれる（向き追従などに使う）
  * onItemCollect(item): 敵が落としたアイテムがプレイヤーの手元に届いて消えたときに呼ばれる（item は ITEMS の要素）
+ * 戻り値の enemyAttack({ onHit, onEnd }) で敵に攻撃させ、cancelEnemyAttack() で攻撃を取り消す。
  * 戻り値の dispose() を呼ぶと全て停止・破棄する。
  */
 export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
@@ -115,6 +125,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   let hasDropped = false // 今の敵のドロップ処理を済ませたら true
   let defeatDropId = null // 撃破した敵が落とすアイテムの id（playDefeatEffect で決まる）
   let spotlight = null // ラスボスのスポットライト演出（出ている間だけ）
+  // 敵の攻撃 { state: 'windup' | 'fly', startedAt, mesh, onHit, onEnd }。攻撃していなければ null（同時に 1 つだけ）
+  let enemyAttack = null
 
   /** モデルの中心（ワールド座標）を out に入れて返す */
   const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
@@ -130,6 +142,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     model.traverse((obj) => {
       if (!obj.material) return
       obj.material = obj.material.clone()
+      // 演出で emissive を変えた後に戻す色（ラスボスの目・宝石のように元から光っている部分を消さないため）
+      obj.material.userData.baseEmissive = obj.material.emissive?.clone()
       if (envMapIntensity) {
         obj.material.envMap = envMap
         obj.material.envMapIntensity = envMapIntensity
@@ -316,8 +330,9 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     spotlight = null
   }
 
-  /** 出ている敵を消す（いなければ何もしない）。HP ゲージ・ドロップ・魔法弾・スポットライトも一緒に消す */
+  /** 出ている敵を消す（いなければ何もしない）。HP ゲージ・ドロップ・魔法弾・スポットライト・敵の攻撃も一緒に消す */
   const clearEnemy = () => {
+    cancelEnemyAttack() // 見た目を戻すので、敵を消す前に呼ぶ
     clearDrop()
     clearProjectiles()
     clearSpotlight()
@@ -362,16 +377,60 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     enemyModel.scale.set(base * sx, base * sy, base * sz)
   }
 
+  /** 出ている敵の emissive を元の色（prepareModel で保存したもの）に戻す */
+  const restoreEnemyEmissive = () => {
+    enemyModel?.traverse((obj) => {
+      obj.material?.emissive?.copy(obj.material.userData.baseEmissive ?? _black)
+    })
+  }
+
+  /** 溜めの見た目（赤い点滅・膨らみ）を元に戻す */
+  const endWindup = () => {
+    restoreEnemyEmissive()
+    setEnemySquash(1, 1, 1)
+  }
+
+  /**
+   * 敵が溜めてから弾を撃つ（処理は loop 内）。当たったら onHit()、攻撃が終わったら（当たった・ひるんだ）onEnd(result) を 1 回呼ぶ。
+   * result は 'hit' | 'interrupted'（溜め中に魔法が当たった）。
+   * 敵がいない・撃破演出中・既に攻撃中なら何もせず false を返す。始められたら true
+   */
+  const startEnemyAttack = ({ onHit, onEnd } = {}) => {
+    if (!enemyModel || isDefeated || enemyAttack) return false
+    enemyAttack = { state: 'windup', startedAt: performance.now(), mesh: null, onHit, onEnd }
+    return true
+  }
+
+  /** 敵の攻撃を取り消す（溜めも飛んでいる弾も消す）。onEnd は呼ばない。攻撃していなければ何もしない */
+  const cancelEnemyAttack = () => {
+    if (!enemyAttack) return
+    if (enemyAttack.state === 'windup') endWindup()
+    if (enemyAttack.mesh) {
+      scene.remove(enemyAttack.mesh)
+      enemyAttack.mesh.geometry.dispose()
+      enemyAttack.mesh.material.dispose()
+    }
+    enemyAttack = null
+  }
+
   /**
    * ダメージを受けた演出：敵を一瞬白く光らせ、潰して戻し、リングと粒子を出す。
    * hitPosition を省略すると敵の中心にエフェクトを出す。敵がいなければ何もしない
    */
   const playDamageEffect = (hitPosition) => {
     if (!enemyModel) return
+    // 溜め中に当たったらひるんで攻撃をやめる（弾は出ない）
+    if (enemyAttack?.state === 'windup') {
+      endWindup()
+      const { onEnd } = enemyAttack
+      enemyAttack = null
+      onEnd?.('interrupted')
+    }
+
     setEnemyEmissive(_white)
     clearTimeout(damageTimer)
     damageTimer = setTimeout(() => {
-      if (running) setEnemyEmissive(_black)
+      if (running) restoreEnemyEmissive()
     }, DAMAGE_FLASH_MS)
 
     if (!isDefeated) {
@@ -417,6 +476,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     if (!enemyModel) return
     defeatDropId = dropId
     clearTimeout(squashTimer)
+    cancelEnemyAttack() // isDefeated にする前に呼ぶ（溜めの膨らみを戻す）
     isDefeated = true
     clearProjectiles()
   }
@@ -471,6 +531,39 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
       }
     }
 
+    // 2.5 敵の攻撃：溜め（赤く点滅して膨らむ）→ 弾がプレイヤーの手元へ飛んでくる
+    if (enemyAttack && enemyModel) {
+      if (enemyAttack.state === 'windup') {
+        const elapsed = performance.now() - enemyAttack.startedAt
+        if (Math.floor(elapsed / WINDUP_BLINK_MS) % 2) restoreEnemyEmissive()
+        else setEnemyEmissive(_red)
+        setEnemySquash(WINDUP_SWELL, WINDUP_SWELL, WINDUP_SWELL)
+        if (elapsed >= ATTACK_WINDUP_MS) {
+          endWindup()
+          const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(ENEMY_SHOT_RADIUS, 16, 16),
+            new THREE.MeshBasicMaterial({ color: ENEMY_SHOT_COLOR }), // 光の影響を受けないので、スポットライト演出の闇でも見える
+          )
+          // 翼の大きいラスボスでは箱の中心が体からずれるので、centerOf() ではなく体の中心から撃つ
+          mesh.position.copy(enemyModel.userData.center)
+          scene.add(mesh)
+          enemyAttack.mesh = mesh
+          enemyAttack.state = 'fly'
+        }
+      } else if (enemyAttack.state === 'fly') {
+        // 行き先はカメラ基準なので、端末を動かしても手元に向かってくる
+        camera.localToWorld(_target.copy(_playerPoint))
+        const { mesh } = enemyAttack
+        mesh.position.lerp(_target, ENEMY_SHOT_LERP)
+        if (mesh.position.distanceTo(_target) < ENEMY_SHOT_HIT_DISTANCE) {
+          const { onHit, onEnd } = enemyAttack
+          cancelEnemyAttack() // 弾を消す
+          onHit?.()
+          onEnd?.('hit')
+        }
+      }
+    }
+
     // 3. 敵をカメラに追従させ、正面をカメラに向け続ける（撃破演出中は回転させたいので向きは変えない）。
     //    onFrame でカメラの向きが変わった後に呼ぶ。fixed の敵（ラスボス）は出た位置・向きのまま
     if (enemyModel && !enemyModel.userData.enemy.fixed) {
@@ -520,6 +613,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     setEnemyHpRatio,
     playDamageEffect,
     shootMagic,
+    enemyAttack: startEnemyAttack,
+    cancelEnemyAttack,
     playDefeatEffect,
     dispose() {
       running = false
