@@ -10,7 +10,7 @@ const HIRAGANA = Array.from({ length: 0x3096 - 0x3041 + 1 }, (_, i) => String.fr
 const KATAKANA = Array.from({ length: 0x30fa - 0x30a1 + 1 }, (_, i) => String.fromCharCode(0x30a1 + i)).join('')
 const KANJI =
   '一中了以位使例供信入内冒出分切力取可同向否報場子字守定対少届左度待得復応情戻所手拒探接教数文方未末権次決波活消済渡用画発相確端終続置脱自英見親設許試認距近送途通鍵閉開限険離電面順'
-const SYMBOLS = 'ー・、。「」（）！？〜：ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 m'
+const SYMBOLS = 'ー・、。「」（）！？〜：…ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 m'
 const TEXT = HIRAGANA + KATAKANA + KANJI + SYMBOLS
 
 /**
