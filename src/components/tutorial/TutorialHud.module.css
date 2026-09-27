@@ -1,0 +1,59 @@
+/* チュートリアルの案内：距離表示（.distance-hud, top: 12px）の下に出す。狭い端末では 2 行に折り返す */
+.caption {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  color: #fff;
+  font-weight: bold;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  animation: caption-in 0.3s ease-out;
+}
+
+/* 「…」を 1 つずつ増やす（DungeonEntrance の .dots と同じ） */
+.dots::after {
+  content: '';
+  display: inline-block;
+  width: 1.5em;
+  text-align: left;
+  animation: dots 1.2s steps(4, end) infinite;
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes dots {
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caption,
+  .dots::after {
+    animation: none;
+  }
+}

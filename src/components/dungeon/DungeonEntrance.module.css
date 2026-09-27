@@ -152,6 +152,11 @@
   animation: dots 1.2s steps(4, end) infinite;
 }
 
+/* AR 画面の上にふわっと出す（チュートリアルの後の切り替え演出）。0.4s は MIN_CLOSED_MS の中に収める */
+.fadeIn {
+  animation: overlay-in 0.4s ease-out both;
+}
+
 /* ===== 開くとき ===== */
 .opening .left {
   transform: rotateY(88deg);
@@ -170,6 +175,19 @@
 .opening {
   opacity: 0;
   transition: opacity 0.35s ease 0.95s;
+}
+/* フェードインの animation が残っていると opacity を上書きして透明にならないので外す（フェードインは開く前に終わっている） */
+.fadeIn.opening {
+  animation: none;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes seam-pulse {

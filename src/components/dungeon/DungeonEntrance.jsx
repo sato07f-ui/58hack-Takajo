@@ -10,8 +10,9 @@ const SLOW_HINT_MS = 5000 // これ以上待たせたら「はじめては時間
  * ready（カメラ・認識モデルの準備完了）と最低表示時間の両方がそろったら扉が開き、開き終わったら onDone() を呼ぶ。
  * props.ready: 準備が終わったら true
  * props.onDone(): 演出が終わって、この画面を外してよいときに呼ばれる
+ * props.fadeIn: true なら、AR 画面の上にふわっと出す（任意。チュートリアルの後の切り替え演出用）。開く条件・最低表示時間は変わらない
  */
-export function DungeonEntrance({ ready, onDone }) {
+export function DungeonEntrance({ ready, onDone, fadeIn = false }) {
   const [minElapsed, setMinElapsed] = useState(false)
   const [slow, setSlow] = useState(false)
   const onDoneRef = useRef(onDone)
@@ -38,7 +39,11 @@ export function DungeonEntrance({ ready, onDone }) {
   }, [opening])
 
   return (
-    <div className={`${styles.overlay} ${opening ? styles.opening : ''}`} role="status" aria-live="polite">
+    <div
+      className={`${styles.overlay} ${fadeIn ? styles.fadeIn : ''} ${opening ? styles.opening : ''}`}
+      role="status"
+      aria-live="polite"
+    >
       <div className={styles.light} />
       <div className={styles.doorway}>
         <div className={`${styles.door} ${styles.left}`} />
