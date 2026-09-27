@@ -10,12 +10,12 @@ const ATTACK_LABELS = {
 }
 
 /**
- * バトル中の操作 UI（手持ち一覧・「〇〇を手に入れた！」・攻撃ボタン）。.ui-layer の中に置く。
+ * バトル中の操作 UI（手持ち一覧・「〇〇を手に入れた！」・被弾演出（画面の縁が赤く光る・いたい！）・攻撃ボタン）。.ui-layer の中に置く。
  * props.battle: useBattle の返り値
  * props.disabled: true の間は攻撃ボタンを押せない（脱出中など）
  */
 export function BattleHud({ battle, disabled = false }) {
-  const { enemy, isCooldown, inventory, itemToast, handleAttack } = battle
+  const { enemy, isCooldown, inventory, itemToast, playerHits, handleAttack } = battle
   // ready: 撃てる / charging: 撃った直後で魔力をためている / idle: 敵がいない・脱出中で撃てない
   const state = !enemy || disabled ? 'idle' : isCooldown ? 'charging' : 'ready'
   // チャージが満タンになった（charging → ready になった）ときだけキラッと光らせる。
@@ -44,6 +44,14 @@ export function BattleHud({ battle, disabled = false }) {
       {itemToast && (
         <p key={itemToast.id + inventory[itemToast.id]} className="item-toast">
           {itemToast.name}を手に入れた！
+        </p>
+      )}
+
+      {/* key を被弾回数にして、当たるたびに作り直してアニメーションを最初から流す */}
+      {playerHits > 0 && <div key={playerHits} className="player-hit-flash" aria-hidden="true" />}
+      {playerHits > 0 && (
+        <p key={`hit-${playerHits}`} className="player-hit-text">
+          いたい！
         </p>
       )}
 

@@ -74,6 +74,37 @@ body,
   }
 }
 
+/* 敵の弾に当たったとき：画面の縁を赤く光らせる */
+.player-hit-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 80px 30px rgba(255, 0, 0, 0.7);
+  animation: player-hit-flash 0.5s ease-out forwards;
+}
+
+@keyframes player-hit-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* 敵の弾に当たったときの「いたい！」（見た目は .item-toast と同じ） */
+.player-hit-text {
+  position: absolute;
+  top: 40%;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  color: #ff5a5a;
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.6);
+  animation: item-toast 0.8s ease-out forwards;
+}
+
 /* 攻撃（魔法）ボタン。BattleHud.jsx の state で見た目を切り替える
    ready: 光る青い魔法石。オーラが光り、ふわふわ呼吸して「今押せる！」と伝える
    charging: 色は残したまま、光と動きを止めて少し薄くする（撃った直後の短い間）
