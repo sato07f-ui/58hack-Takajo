@@ -72,7 +72,9 @@ export function ParentView({ onBack }) {
       </p>
       {revive.childState === 'escaped' && (
         <div className="child-escaped-banner" role="alert">
-          <p className="child-escaped-title">子供がダンジョンから脱出しました！</p>
+          <p className="child-escaped-title">
+            {revive.childReason === 'defeated' ? '子供がバトルでやられてしまいました！' : '子供がダンジョンから脱出しました！'}
+          </p>
           <p>
             {revive.sendingKey
               ? '復活の鍵を送信中…'

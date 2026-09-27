@@ -13,16 +13,23 @@ const ESCAPED_REANNOUNCE_MS = 5000
  * 手入力で復活する手段は用意しない（親に近づくことが唯一の復活条件）。
  *
  * - 通信が途切れた（channel.isStale）ときも安全側に倒して 'escaped' にする
+ * - バトルでライフが 0 になったら defeat() で 'escaped'（reason: 'defeated'）にする。復活の仕方は脱出と同じ
  *
- * 引数: { me, peer, channel, roomCode }（channel は useLocationChannel の返り値）
- * 返り値: { state: 'playing' | 'escaped', reason: 'distance' | 'stale' | null, distance, justRevived }
+ * 引数: { me, peer, channel, roomCode, onRevive }（channel は useLocationChannel の返り値）
+ *   onRevive(): 親の鍵で復活した瞬間に呼ばれる（任意。ライフを戻す用）
+ * 返り値: { state: 'playing' | 'escaped', reason: 'distance' | 'stale' | 'defeated' | null, distance, justRevived, defeat }
  */
-export function useEscapeState({ me, peer, channel, roomCode }) {
+export function useEscapeState({ me, peer, channel, roomCode, onRevive }) {
   const [state, setState] = useState('playing')
   const [justRevived, setJustRevived] = useState(false)
   const [reason, setReason] = useState(null)
   const stateRef = useRef(state) // イベントハンドラから最新の状態を見るため
   const { sendEvent, onEvent, isStale } = channel
+  // 鍵の受信（effect 内で登録）から最新のコールバックを呼ぶため
+  const onReviveRef = useRef(onRevive)
+  useEffect(() => {
+    onReviveRef.current = onRevive
+  })
 
   const distance = distanceMeters(me, peer)
   const tooFar = state === 'playing' && isAccurateEnough(me, peer) && distance > ESCAPE_DISTANCE_M
@@ -32,6 +39,11 @@ export function useEscapeState({ me, peer, channel, roomCode }) {
     setState('escaped')
     setReason(why)
     sendEvent('escaped', { reason: why, distance: distance == null ? null : Math.round(distance) })
+  }
+
+  /** バトルでやられた（ライフが 0 になった）。プレイ中でなければ何もしない */
+  const defeat = () => {
+    if (stateRef.current === 'playing') escape('defeated')
   }
 
   useHoldCondition(tooFar, ESCAPE_HOLD_MS, () => escape('distance'))
@@ -52,6 +64,7 @@ export function useEscapeState({ me, peer, channel, roomCode }) {
       setReason(null)
       setJustRevived(true)
       sendEvent('revived')
+      onReviveRef.current?.()
     })
   }, [onEvent, sendEvent, roomCode])
 
@@ -62,5 +75,5 @@ export function useEscapeState({ me, peer, channel, roomCode }) {
     return () => clearTimeout(id)
   }, [justRevived])
 
-  return { state, reason, distance, justRevived }
+  return { state, reason, distance, justRevived, defeat }
 }

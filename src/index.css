@@ -407,6 +407,18 @@ code {
   75% { transform: translateX(4px); }
 }
 
+/* 開発用コードでやられたときの「もういちど」ボタン（GameOverScreen） */
+.game-over-retry {
+  justify-self: center;
+  padding: 12px 32px;
+  border: none;
+  border-radius: 999px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  background: #e0406a;
+}
+
 /* 復活直後のバナー */
 .revived-banner {
   position: fixed;

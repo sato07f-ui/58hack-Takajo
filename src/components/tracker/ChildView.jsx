@@ -12,7 +12,7 @@ import { distanceLevel, formatDistance } from '../../utils/tracker/distanceLevel
 import { DistanceDisplay } from './DistanceDisplay'
 import { ConnectionStatus } from './ConnectionStatus'
 import { LocationPermissionHint } from './LocationPermissionHint'
-import { EscapedScreen, RevivedBanner } from './EscapedScreen'
+import { EscapedScreen, GameOverScreen, RevivedBanner } from './EscapedScreen'
 import { BattleHud } from '../battle/BattleHud'
 import { DungeonEntrance } from '../dungeon/DungeonEntrance'
 import { BossGate } from '../boss/BossGate'
@@ -48,10 +48,18 @@ export function ChildView({ onBack, ar }) {
   // 開発用コードのときは接続しない（peer が来ないので脱出判定も起きない）
   const channel = useLocationChannel({ roomCode: devMode ? '' : roomCode, role: 'child' })
   const { status, sendLocation } = channel
-  const escape = useEscapeState({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
+  // 親の鍵で復活したらライフを満タンに戻す（battle は下で作るが、呼ばれるのは描画の後なので参照できる）
+  const escape = useEscapeState({
+    me: geo.position,
+    peer: channel.peerLocation,
+    channel,
+    roomCode,
+    onRevive: () => battle.revive(),
+  })
   const wakeLock = useWakeLock()
   const escaped = escape.state === 'escaped'
-  const battle = useBattle({ disabled: escaped })
+  // ライフが 0 になったら脱出と同じ扱いにして、親に近づくまで戦えなくする（開発用コードは GameOverScreen のボタンで復活）
+  const battle = useBattle({ disabled: escaped, onGameOver: devMode ? undefined : escape.defeat })
   const boss = useBossSummonReceiver({ channel, roomCode })
   const [gateStep, setGateStep] = useState('appear') // 扉の演出の段階（BossGate の TIMELINE）
   // ラスボスの段階（ArScene の bossPhase）。ダンジョンに入る前に呼ばれた場合は、入った瞬間に扉の演出を始める
@@ -138,6 +146,7 @@ export function ChildView({ onBack, ar }) {
             {devMode ? '開発用（親なし）' : `親まで ${formatDistance(escape.distance)}`}
           </div>
           {escaped && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
+          {devMode && battle.gameOver && <GameOverScreen onRetry={battle.revive} />}
           {escape.justRevived && <RevivedBanner />}
           {bossPhase !== 'none' && gateStep !== 'done' && <BossGate onStep={setGateStep} />}
         </div>
