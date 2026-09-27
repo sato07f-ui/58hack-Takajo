@@ -99,7 +99,7 @@ phase: 'done'      holdScan が外れて ArScene が rescan() → 「食材の�
 ## Phase C: ArScene でチュートリアルの敵を出し、敵探しを待たせる（PR #3）
 
 - **[C-1]** `src/utils/ar/ArScene.jsx` に定数 `const TUTORIAL = ENEMIES.find((enemy) => enemy.tutorial)` を追加し、`TUTORIAL_SPAWN_SCREEN_Y`（`tutorialRule.js`）と `loadModel`（`src/utils/item/loadModel.js`）、`findItem`（`src/utils/item/items.js`）を import する。
-- **[C-2]** `export const preloadTutorial = () => { ... }` を `ArScene.jsx` に追加する。
+- **[C-2]** `export const preloadTutorial = () => { ... }` を `src/utils/tutorial/preloadTutorial.js` に追加する（`ArScene.jsx` から関数を export すると `react-refresh/only-export-components` の警告が出るため、`preloadNextScreen.js` と同じく別ファイルにする）。
   - `loadModel(TUTORIAL.modelUrl)` と `loadModel(findItem(TUTORIAL.drop)?.modelUrl)` を呼び、返り値の Promise は `.catch(() => {})` で捨てる。`loadModel` は url ごとに Promise をキャッシュするので、後の `spawnEnemy` / `spawnDrop` はダウンロード済みのものを使う。
   - JSDoc に「ダンジョンに入るタップの時点で呼ぶ。カメラの許可を待つ間に、チュートリアルの敵とドロップの glb を読み込んでおく（`preloadNextScreen` と同じ考え方）」と書く。
 - **[C-3]** props に `tutorial = false`, `holdScan = false`, `onSceneReady` を追加し、JSDoc に追記する。
@@ -152,7 +152,7 @@ phase: 'done'      holdScan が外れて ArScene が rescan() → 「食材の�
 
 ## Phase E: ChildView でつなぐ（PR #5）
 
-- **[E-1]** `src/components/tracker/ChildView.jsx` で `useTutorial`, `TutorialHud`, `preloadTutorial`（`ArScene.jsx`）を import する。`const [sceneReady, setSceneReady] = useState(false)` を追加する。
+- **[E-1]** `src/components/tracker/ChildView.jsx` で `useTutorial`, `TutorialHud`, `preloadTutorial`（`src/utils/tutorial/preloadTutorial.js`）を import する。`const [sceneReady, setSceneReady] = useState(false)` を追加する。
 - **[E-2]** `const tutorial = useTutorial({ sceneReady, enemy: battle.enemy, bossActive: bossPhase !== 'none', playerHits: battle.playerHits })` を、`bossPhase` を求めた後に呼ぶ。
 - **[E-3]** `handleEnterDungeon` のセンサー権限の結果が `'denied'` でなかった後を次のようにする。
   - `const withTutorial = tutorial.begin()`, `if (withTutorial) preloadTutorial()`, `setSceneReady(false)`（既存の `setArReady(false)` の隣）
@@ -180,11 +180,11 @@ phase: 'done'      holdScan が外れて ArScene が rescan() → 「食材の�
 ---
 
 ## 主な変更・新規ファイル
-- 新規: `src/utils/tutorial/{tutorialRule,useTutorial}.js`（`tutorialPhase`, `isScanHeld`, `tutorialCaption`, `TUTORIAL_SPAWN_SCREEN_Y`, `TUTORIAL_CLEAR_MS`, `useTutorial`）
+- 新規: `src/utils/tutorial/{tutorialRule,useTutorial,preloadTutorial}.js`（`tutorialPhase`, `isScanHeld`, `tutorialCaption`, `TUTORIAL_SPAWN_SCREEN_Y`, `TUTORIAL_CLEAR_MS`, `useTutorial`）
 - 新規: `src/components/tutorial/TutorialHud.jsx`, `src/components/tutorial/TutorialHud.module.css`
 - 変更: `src/utils/enemy/enemies.js`（`tutorial-carrot` の追加）
 - 変更: `src/utils/imageTrigger/useImageTrigger.js`, `src/utils/objectTrigger/useObjectTrigger.js`（`startPaused` オプション）
-- 変更: `src/utils/ar/ArScene.jsx`（`tutorial` / `holdScan` / `onSceneReady` props、チュートリアルの敵の出現、拾った後の敵探しの保留、`preloadTutorial`）
+- 変更: `src/utils/ar/ArScene.jsx`（`tutorial` / `holdScan` / `onSceneReady` props、チュートリアルの敵の出現、拾った後の敵探しの保留）
 - 変更: `src/components/dungeon/DungeonEntrance.jsx`, `src/components/dungeon/DungeonEntrance.module.css`（`fadeIn`）
 - 変更: `src/components/tracker/ChildView.jsx`（`useTutorial` の組み込み、扉の出し分け、`TutorialHud`）
 - 変更（ドキュメント）: `docs/APP_DESIGN.md`, `docs/IMAGE_TRIGGER_SETUP.md`, `docs/LAST_BOSS.md`

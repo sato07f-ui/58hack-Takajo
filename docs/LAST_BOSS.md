@@ -158,6 +158,7 @@ function handleBossAppear() {}
 - ダメージ・撃破の演出は、既存の `createScene` の `playDamageEffect()` / `playDefeatEffect()` を使える（`ArScene` に `sceneRef` を渡すと取得できる）
 - 勝敗を親に知らせたい場合は、同じチャンネルで `sendEvent('boss-defeated')` などのイベントを追加する
 - ラスボスも普通の敵と同じく `useBattle` から攻撃される（[ENEMY_ATTACK_PLAN.md](ENEMY_ATTACK_PLAN.md)）。攻撃の予約は `onEnemySpawn(BOSS)` が呼ばれる `'fight'` から始まるので、門・スポットライトの演出中は攻撃されない。ラスボス専用の攻撃にする場合は `src/utils/battle/enemyAttackRule.js` に敵ごとの間隔を足す
+- チュートリアル中・扉の切り替え中にラスボスが呼ばれた場合も、`appear` の段階の `clearEnemy()` でチュートリアルのにんじんが消え、そのままラスボス戦になる（[OFFLINE_TUTORIAL_PLAN.md](OFFLINE_TUTORIAL_PLAN.md)）
 
 ---
 
