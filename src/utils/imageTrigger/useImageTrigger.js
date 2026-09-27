@@ -6,17 +6,19 @@ import { createImageTracker } from './createImageTracker'
  * 見つかったら onDetect({ targetIndex, videoX, videoY }) を呼んで止まる。
  * targetIndex は「targetUrls の何番目のファイルの画像か」。
  * targetUrls は毎レンダーで作り直さないこと（変わると認識をやり直す）。
+ * startPaused: true なら準備だけして探し始めず、status は 'stopped' になる（rescan() で探し始める）。
+ *   最初のレンダーの値だけが効く（チュートリアル中に準備だけ先に進める用）
  * 戻り値: { status, error, stop, rescan }
  * status: 'idle' | 'scanning' | 'detected' | 'stopped' | 'error'
  * stop(): 探すのをやめる（他の方法で敵が見つかったときなど）。準備中に呼んでも、準備後に探し始めない
  * rescan(): 敵を倒した後などに、もう一度探し始める
  */
-export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect }) => {
+export const useImageTrigger = (videoRef, { enabled, targetUrls, onDetect, startPaused = false }) => {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const trackerRef = useRef(null)
   const onDetectRef = useRef(onDetect)
-  const stoppedRef = useRef(false) // stop() されたら、rescan() まで探さない
+  const stoppedRef = useRef(startPaused) // stop() されたら（startPaused なら最初から）、rescan() まで探さない
 
   // 毎レンダーで最新のコールバックを参照する（effect を張り直さないため）
   useEffect(() => {

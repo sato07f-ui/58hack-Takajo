@@ -4,6 +4,8 @@ import { createObjectTracker, loadObjectModel } from './createObjectTracker'
 /**
  * enabled が true になったら、COCO-SSD で targetClass（例: 'banana'）を探し始める hook。
  * 見つかったら onDetect({ className, score, videoX, videoY }) を呼んで止まる。
+ * startPaused: true ならモデルを読み込むだけで探し始めず、status は 'stopped' になる（rescan() で探し始める）。
+ *   最初のレンダーの値だけが効く（チュートリアル中に準備だけ先に進める用）
  * 戻り値: { status, error, stop, rescan }
  * status: 'idle' | 'loading' | 'scanning' | 'detected' | 'stopped' | 'error'
  * stop(): 探すのをやめる（他の方法で敵が見つかったときなど）。モデル読み込み中に呼んでも、読み込み後に探し始めない
@@ -11,13 +13,13 @@ import { createObjectTracker, loadObjectModel } from './createObjectTracker'
  */
 export const useObjectTrigger = (
   videoRef,
-  { enabled, targetClass, minScore = 0.6, intervalMs = 500, onDetect },
+  { enabled, targetClass, minScore = 0.6, intervalMs = 500, onDetect, startPaused = false },
 ) => {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const trackerRef = useRef(null)
   const onDetectRef = useRef(onDetect)
-  const stoppedRef = useRef(false) // stop() されたら、rescan() まで探さない
+  const stoppedRef = useRef(startPaused) // stop() されたら（startPaused なら最初から）、rescan() まで探さない
 
   // 毎レンダーで最新のコールバックを参照する（effect を張り直さないため）
   useEffect(() => {
