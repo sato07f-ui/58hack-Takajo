@@ -23,10 +23,12 @@ const BOSS = ENEMIES.find((enemy) => enemy.id === 'boss')
  * props.sceneRef: createScene() の戻り値を親に渡すための ref（任意）
  * props.onEnemySpawn(enemy): 敵が出現したときに呼ばれる（任意。ゲームロジックへの通知用）。
  *   画像認識の敵（にんじん等）も物体認識の敵（バナナ）もラスボスも、同じようにここへ通知される
- * props.bossPhase: ラスボスの段階（任意）。'none' | 'gate' | 'appear'
- *   'gate': 門の演出中。画像認識・物体認識を止め、普通の敵が出ないようにする
- *   'appear': 門が開いた。出ている敵を消し、画面中央にラスボスを出す
- * props.onBossAppear(model): ラスボスが出現したときに呼ばれる（任意。ラスボス戦の開始の合図）
+ * props.bossPhase: ラスボスの段階（任意）。'none' | 'gate' | 'appear' | 'reveal' | 'fight'
+ *   'gate': 扉の演出中。画像認識・物体認識を止め、普通の敵が出ないようにする
+ *   'appear': 扉が開き始めた（画面は扉と闇で隠れている）。出ている敵を消し、周りを暗くして闇の中にラスボスを出す
+ *   'reveal': 扉が消えた。スポットライトを点け、ラスボスを闇から浮かび上がらせる
+ *   'fight': 演出が終わった。ラスボス戦を始める（onEnemySpawn / onBossAppear を呼ぶ）
+ * props.onBossAppear(model): ラスボス戦が始まるときに呼ばれる（任意）
  */
 export function ArScene({ orientationRef, sceneRef, onEnemySpawn, bossPhase = 'none', onBossAppear }) {
   const { videoRef, status, error } = useCamera(true)
@@ -35,6 +37,8 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, bossPhase = 'n
   // 画像認識と物体認識のどちらかで敵が見つかったら true。同時に見つかっても敵は 1 体だけ出す
   const foundRef = useRef(false)
   const bossSpawnedRef = useRef(false) // ラスボスは 1 回だけ出す
+  // ラスボスの読み込みは非同期なので、読み込み中に段階が進んでも追いつけるよう最新の状態を持っておく
+  const bossRef = useRef({ phase: 'none', model: null, announced: false })
   // effect から最新のコールバックを呼ぶため（effect を張り直さない）
   const callbacksRef = useRef({ onEnemySpawn, onBossAppear })
   useEffect(() => {
@@ -88,22 +92,39 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, bossPhase = 'n
     onDetect: ({ videoX, videoY }) => handleEnemyFound(BANANA, videoX, videoY),
   })
 
-  // ラスボス: 門の演出が始まったら認識を止め、門が開いたら画面中央に出す
+  // ラスボス: 扉の演出が始まったら認識を止め、扉が開き始めたら闇の中に出し、段階に合わせて照らして戦闘を始める
   useEffect(() => {
+    const boss = bossRef.current
+    boss.phase = bossPhase
     if (bossPhase === 'none') return
     foundRef.current = true // これ以降、認識で普通の敵は出さない
     stopImageScan()
     stopObjectScan()
-    if (bossPhase !== 'appear' || bossSpawnedRef.current) return
-    bossSpawnedRef.current = true
     const scene = localSceneRef.current
-    if (!scene) return
-    scene.clearEnemies()
-    scene.spawnEnemy(BOSS, window.innerWidth / 2, window.innerHeight * (BOSS.spawnScreenY ?? 0.5)).then((model) => {
-      if (!model) return // 読み込み中に画面が閉じられた
-      callbacksRef.current.onEnemySpawn?.(BOSS)
-      callbacksRef.current.onBossAppear?.(model)
-    })
+    if (!scene || bossPhase === 'gate') return
+
+    // 今の段階まで演出を進める（読み込みが終わっていなければ、終わったときにもう一度呼ぶ）
+    const advance = () => {
+      if (!boss.model) return
+      if (boss.phase === 'reveal' || boss.phase === 'fight') scene.revealSpotlight()
+      if (boss.phase === 'fight' && !boss.announced) {
+        boss.announced = true
+        callbacksRef.current.onEnemySpawn?.(BOSS)
+        callbacksRef.current.onBossAppear?.(boss.model)
+      }
+    }
+
+    if (!bossSpawnedRef.current) {
+      bossSpawnedRef.current = true
+      scene.clearEnemies()
+      scene.spawnEnemy(BOSS, window.innerWidth / 2, window.innerHeight * (BOSS.spawnScreenY ?? 0.5)).then((model) => {
+        if (!model) return // 読み込み中に画面が閉じられた
+        boss.model = model
+        scene.startSpotlight(model)
+        advance()
+      })
+    }
+    advance()
   }, [bossPhase, stopImageScan, stopObjectScan])
 
   return (

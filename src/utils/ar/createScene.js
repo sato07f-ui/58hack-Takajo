@@ -3,6 +3,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { spawnItem, updateItems, clearItems } from './itemDrop'
+import { createBossSpotlight } from './bossSpotlight'
 
 const _zee = new THREE.Vector3(0, 0, 1)
 const _euler = new THREE.Euler()
@@ -57,8 +58,9 @@ export const createScene = (canvas, { onFrame } = {}) => {
   camera.position.set(0, 0, 0) //カメラの座標を原点固定（後で変更可能）
 
   // 照明: 全体を底上げする環境光 + 空/地面の色味 + カメラ側から当てる光
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8))
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.2))
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8)
+  const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x999999, 1.2)
+  scene.add(ambientLight, hemisphereLight)
   // カメラの子にして、端末をどちらに向けても敵の正面（プレイヤー側）が明るくなるようにする
   const frontLight = new THREE.DirectionalLight(0xffffff, 1.6)
   frontLight.position.set(0.5, 1, 0) // カメラから見て右上
@@ -78,6 +80,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
   let damageTimer = 0
   let squashTimer = 0
   let isDefeated = false // 撃破演出中（縮んで消える途中）か
+  let spotlight = null // ラスボスのスポットライト演出（出ている間だけ）
 
   /**
    * 画面上の点 (screenX, screenY) の方向、カメラから SPAWN_DISTANCE（enemy.spawnDistance があればその距離）先に敵を出す。
@@ -143,9 +146,20 @@ export const createScene = (canvas, { onFrame } = {}) => {
     projectiles.length = 0
   }
 
+  /**
+   * 周りを暗くし、model（ラスボス）を闇に包む。revealSpotlight() でスポットライトを当てる。
+   * 敵が消えると元に戻る
+   */
+  const startSpotlight = (model) => {
+    spotlight?.dispose()
+    spotlight = createBossSpotlight(scene, model, [ambientLight, hemisphereLight, frontLight], camera)
+  }
+
   /** 出ている敵を全て消す */
   const clearEnemies = () => {
     clearProjectiles()
+    spotlight?.dispose()
+    spotlight = null
     for (const model of enemies) {
       scene.remove(model)
       model.traverse((obj) => {
@@ -238,6 +252,7 @@ export const createScene = (canvas, { onFrame } = {}) => {
     updateDefeat()
     updateHitEffects()
     updateItems()
+    spotlight?.update()
     renderer.render(scene, camera)
     rafId = requestAnimationFrame(loop)
   }
@@ -249,6 +264,8 @@ export const createScene = (canvas, { onFrame } = {}) => {
     renderer,
     spawnEnemy,
     clearEnemies,
+    startSpotlight,
+    revealSpotlight: () => spotlight?.reveal(),
     playDamageEffect,
     playDefeatEffect,
     dispose() {

@@ -28,5 +28,5 @@ export const ENEMIES = [
   // 黒と金が暗くならないよう映り込みを当てる
   // spawnLift で高い位置に出して、プレイヤーを見下ろさせる
   // 画面の少し下（spawnScreenY）を狙って高い位置（spawnLift）に出し、顔が画面の上側に来て、胸が下にはみ出すくらい迫らせる
-  { id: 'boss', name: '魔王ドラゴン', modelUrl: bossUrl, targetUrl: null, height: 1.9, spawnDistance: 1.2, spawnLift: 0.2, spawnScreenY: 0.62, envMapIntensity: 0.9 },
+  { id: 'boss', name: '魔王ドラゴン', modelUrl: bossUrl, targetUrl: null, height: 1.9, spawnDistance: 2.5, spawnLift: 0.2, spawnScreenY: 0.55, envMapIntensity: 0.9 },
 ]

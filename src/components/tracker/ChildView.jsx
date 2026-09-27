@@ -13,6 +13,17 @@ import { LocationPermissionHint } from './LocationPermissionHint'
 import { EscapedScreen, RevivedBanner } from './EscapedScreen'
 import { BossGate } from '../boss/BossGate'
 
+// 扉の演出の段階 → ラスボスの段階（ArScene の bossPhase）
+const BOSS_PHASE_BY_GATE_STEP = {
+  appear: 'gate',
+  rumble: 'gate',
+  open: 'appear', // 扉が開き始めたら、隠れているうちに闇の中へラスボスを出す
+  fade: 'appear',
+  light: 'reveal', // 扉が消えたらスポットライトを点ける
+  caption: 'reveal',
+  done: 'fight',
+}
+
 /**
  * 子供の画面。親の横でコードを入力して接続し、以後はコードを表示しない。
  * 接続後に「ダンジョンへ入る」で AR ゲームを開き、離れすぎると脱出状態のオーバーレイを重ねる。
@@ -30,10 +41,9 @@ export function ChildView({ onBack, ar }) {
   const escape = useEscapeState({ me: geo.position, peer: channel.peerLocation, channel, roomCode })
   const wakeLock = useWakeLock()
   const boss = useBossSummonReceiver({ channel, roomCode })
-  const [gateOpened, setGateOpened] = useState(false) // 門が開ききった（ラスボスを出す）
-  const [gateDone, setGateDone] = useState(false) // 門の演出が終わった
-  // ラスボスの段階。ダンジョンに入る前に呼ばれた場合は、入った瞬間に門の演出を始める
-  const bossPhase = !boss.summoned || !inDungeon ? 'none' : gateOpened ? 'appear' : 'gate'
+  const [gateStep, setGateStep] = useState('appear') // 扉の演出の段階（BossGate の TIMELINE）
+  // ラスボスの段階（ArScene の bossPhase）。ダンジョンに入る前に呼ばれた場合は、入った瞬間に扉の演出を始める
+  const bossPhase = !boss.summoned || !inDungeon ? 'none' : BOSS_PHASE_BY_GATE_STEP[gateStep]
 
   /** ラスボスが出現した（ここからラスボス戦。戦闘の処理はここにつなぐ） */
   function handleBossAppear() {}
@@ -102,9 +112,7 @@ export function ChildView({ onBack, ar }) {
           <div className={`distance-hud distance-${level}`}>親まで {formatDistance(escape.distance)}</div>
           {escape.state === 'escaped' && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
           {escape.justRevived && <RevivedBanner />}
-          {bossPhase !== 'none' && !gateDone && (
-            <BossGate onOpened={() => setGateOpened(true)} onDone={() => setGateDone(true)} />
-          )}
+          {bossPhase !== 'none' && gateStep !== 'done' && <BossGate onStep={setGateStep} />}
         </div>
       </>
     )
