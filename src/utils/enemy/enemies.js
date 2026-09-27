@@ -18,8 +18,12 @@ import bossUrl from '../../assets/boss_dragon.glb?url'
  * spawnDistance: カメラから出現位置までの距離 [m]（任意。省略時は ENEMY_FOLLOW.distance）
  * spawnLift: 出現位置を真上に持ち上げる量 [m]（任意）。高い位置の敵はプレイヤーを見下ろす姿勢になる
  * spawnScreenY: 呼び出しで出す敵を、画面のどの高さの方向に出すか（0: 上端〜1: 下端。任意、省略時は 0.5 = 中央）
+ * tutorial: true なら認識では出さず、ダンジョンに最初に入ったときに ArScene が必ず出す
+ *           （読み込み中に遊ぶチュートリアル。docs/OFFLINE_TUTORIAL_PLAN.md）
  */
 export const ENEMIES = [
+  // チュートリアルの敵: 認識の準備中に必ず出る。id を普通のにんじんと分け、ドロップの連続数が混ざらないようにする
+  { id: 'tutorial-carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: null, height: 0.3, drop: 'potion', tutorial: true },
   { id: 'carrot', name: 'にんじん', modelUrl: carrotUrl, targetUrl: '/targets/carrot.mind', height: 0.3, drop: 'carrot-sword' },
   { id: 'greenpepper', name: 'ピーマン', modelUrl: greenpepperUrl, targetUrl: '/targets/greenpepper.mind', height: 0.25, drop: null },
   { id: 'spinach', name: 'ほうれん草', modelUrl: spinachUrl, targetUrl: '/targets/spinach.mind', height: 0.35, drop: null }, // .mind 未作成
