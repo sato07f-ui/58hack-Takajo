@@ -1,0 +1,299 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "マーケットダンジョン ゲームの流れ（開始から終了まで）",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "子供の画面"
+        },
+        "backend": {
+          "label": "ゲーム処理"
+        },
+        "messagebus": {
+          "label": "通信"
+        },
+        "security": {
+          "label": "脱出と復活"
+        },
+        "external": {
+          "label": "親の端末"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "child_ui",
+      "label": "子供の画面"
+    },
+    {
+      "id": "realtime",
+      "label": "親の端末 + Supabase Realtime"
+    },
+    {
+      "id": "battle",
+      "label": "AR バトル"
+    },
+    {
+      "id": "escape",
+      "label": "脱出と復活",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "pairing",
+      "label": "準備（親子の接続）",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "dungeon",
+      "label": "ダンジョン",
+      "fromCol": 2,
+      "toCol": 5,
+      "variant": "emphasis"
+    }
+  ],
+  "mainPath": [
+    "title",
+    "code",
+    "channel",
+    "entrance",
+    "scan",
+    "spawn",
+    "attack",
+    "collect",
+    "finish"
+  ],
+  "nodes": [
+    {
+      "id": "title",
+      "lane": "child_ui",
+      "col": 0,
+      "type": "frontend",
+      "label": "タイトル",
+      "sublabel": "StartScreen",
+      "width": 132
+    },
+    {
+      "id": "code",
+      "lane": "child_ui",
+      "col": 1,
+      "type": "frontend",
+      "label": "コード入力",
+      "sublabel": "RoleSelect → ChildView",
+      "width": 132
+    },
+    {
+      "id": "entrance",
+      "lane": "child_ui",
+      "col": 2,
+      "type": "frontend",
+      "label": "ダンジョンの扉",
+      "sublabel": "DungeonEntrance",
+      "tag": "準備完了まで待機",
+      "width": 132
+    },
+    {
+      "id": "collect",
+      "lane": "battle",
+      "col": 5,
+      "type": "backend",
+      "label": "アイテム回収",
+      "sublabel": "手持ちに追加",
+      "width": 132
+    },
+    {
+      "id": "parent_code",
+      "lane": "realtime",
+      "col": 0,
+      "type": "external",
+      "label": "親がコードを決める",
+      "sublabel": "ParentView",
+      "width": 132
+    },
+    {
+      "id": "channel",
+      "lane": "realtime",
+      "col": 1,
+      "type": "messagebus",
+      "label": "チャンネル接続",
+      "sublabel": "tracker:<コード>",
+      "tag": "TAKAJO1 は接続なし",
+      "width": 132
+    },
+    {
+      "id": "finish",
+      "lane": "realtime",
+      "col": 5,
+      "type": "messagebus",
+      "label": "終了する",
+      "sublabel": "切断 + 位置停止",
+      "width": 132
+    },
+    {
+      "id": "scan",
+      "lane": "battle",
+      "col": 2,
+      "type": "backend",
+      "label": "食材を探す",
+      "sublabel": "MindAR + YOLO",
+      "width": 132
+    },
+    {
+      "id": "spawn",
+      "lane": "battle",
+      "col": 3,
+      "type": "backend",
+      "label": "敵が出現",
+      "sublabel": "spawnEnemy",
+      "width": 132
+    },
+    {
+      "id": "attack",
+      "lane": "battle",
+      "col": 4,
+      "type": "backend",
+      "label": "魔法で攻撃",
+      "sublabel": "useBattle",
+      "tag": "HP 0 で撃破",
+      "width": 132
+    },
+    {
+      "id": "escaped",
+      "lane": "escape",
+      "col": 3,
+      "type": "security",
+      "label": "脱出",
+      "sublabel": "50m 超が 5 秒",
+      "width": 132
+    },
+    {
+      "id": "revive",
+      "lane": "escape",
+      "col": 4,
+      "type": "security",
+      "label": "復活",
+      "sublabel": "10m 以内が 3 秒",
+      "width": 132
+    }
+  ],
+  "edges": [
+    {
+      "id": "start",
+      "from": "title",
+      "to": "code",
+      "label": "タップ",
+      "variant": "emphasis"
+    },
+    {
+      "id": "join-child",
+      "from": "code",
+      "to": "channel",
+      "label": "同じコード",
+      "variant": "emphasis"
+    },
+    {
+      "id": "join-parent",
+      "from": "parent_code",
+      "to": "channel",
+      "variant": "default"
+    },
+    {
+      "id": "enter",
+      "from": "channel",
+      "to": "entrance",
+      "label": "接続済み",
+      "variant": "emphasis",
+      "toSide": "left"
+    },
+    {
+      "id": "open",
+      "from": "entrance",
+      "to": "scan",
+      "label": "扉が開く",
+      "variant": "emphasis"
+    },
+    {
+      "id": "detect",
+      "from": "scan",
+      "to": "spawn",
+      "label": "検出",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fight",
+      "from": "spawn",
+      "to": "attack",
+      "variant": "emphasis"
+    },
+    {
+      "id": "drop",
+      "from": "attack",
+      "to": "collect",
+      "label": "ドロップ",
+      "variant": "emphasis"
+    },
+    {
+      "id": "next",
+      "from": "collect",
+      "to": "scan",
+      "label": "次の敵",
+      "variant": "dashed",
+      "role": "return"
+    },
+    {
+      "id": "stop",
+      "from": "collect",
+      "to": "finish",
+      "label": "終了する",
+      "variant": "default"
+    },
+    {
+      "id": "too-far",
+      "from": "channel",
+      "to": "escaped",
+      "label": "離れすぎ",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "key",
+      "from": "escaped",
+      "to": "revive",
+      "label": "親から鍵",
+      "variant": "security",
+      "role": "branch"
+    },
+    {
+      "id": "resume",
+      "from": "revive",
+      "to": "attack",
+      "label": "攻撃を再開",
+      "variant": "dashed",
+      "role": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入口は見守りモードだけ",
+      "items": [
+        "親と同じコードで接続しないとダンジョンに入れない",
+        "開発用コード TAKAJO1 は npm run dev のときだけ接続を省略する"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "脱出と復活",
+      "items": [
+        "脱出中は攻撃できない。通信が 30 秒途切れても脱出",
+        "復活は親の端末から届く鍵でだけ起きる"
+      ]
+    }
+  ]
+}

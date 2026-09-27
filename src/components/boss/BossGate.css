@@ -1,0 +1,158 @@
+/* ラスボス出現時の「大きな扉が開く」演出（BossGate.jsx） */
+
+.boss-gate {
+  --open-ms: 2600ms; /* 扉が開く時間（BossGate.jsx の TIMELINE と合わせる） */
+  --fade-ms: 1000ms; /* 扉と闇が消える時間 */
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: auto; /* 演出中は後ろのボタンを押せないようにする */
+}
+.boss-gate.is-fade {
+  pointer-events: none;
+}
+
+/* 扉と、その奥の闇。画面いっぱいに広げ、perspective で扉を奥へ開く */
+.boss-gate__stage {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  perspective: 1100px;
+  animation: boss-gate-fade-in 0.8s ease-out both;
+}
+@keyframes boss-gate-fade-in {
+  from { opacity: 0; transform: scale(1.08); }
+  to { opacity: 1; transform: none; }
+}
+/* 開ききったら扉と闇がフェードアウトし、闇に包まれたダンジョン（3D の暗幕）が見えてくる */
+.boss-gate.is-fade .boss-gate__stage {
+  animation: none; /* 最初のフェードインの animation が戻ってきて opacity を上書きしないように */
+  opacity: 0;
+  transition: opacity var(--fade-ms) ease-in;
+}
+
+/* ゴゴゴ…と揺れる。端から後ろが見えないよう少し拡大しておく */
+.boss-gate--rumble .boss-gate__stage {
+  animation: boss-gate-rumble 0.12s linear infinite;
+}
+.boss-gate--open .boss-gate__stage {
+  animation: boss-gate-rumble 0.2s linear 6; /* 開き始めも少し揺らす */
+}
+@keyframes boss-gate-rumble {
+  0% { transform: scale(1.03) translate(0, 0); }
+  25% { transform: scale(1.03) translate(-4px, 3px); }
+  50% { transform: scale(1.03) translate(3px, -3px); }
+  75% { transform: scale(1.03) translate(-3px, -1px); }
+  100% { transform: scale(1.03) translate(0, 0); }
+}
+
+/* 扉（左右 1 枚ずつ、画面の半分ずつ）。黒っぽい木の板 + 鉄の帯 + 鋲 */
+.boss-gate__door {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background:
+    radial-gradient(circle, #8c8478 0 3px, #2a2622 3.5px 4.5px, transparent 5px) 0 0 / 34px 34px,
+    linear-gradient(
+      transparent 7%, #16141a 7% 11%, transparent 11% 47%, #16141a 47% 51%, transparent 51% 88%, #16141a 88% 92%, transparent 92%
+    ),
+    repeating-linear-gradient(90deg, #3a2417 0 30px, #2b1a10 30px 33px),
+    #3a2417;
+  box-shadow:
+    inset 0 0 80px rgba(0, 0, 0, 0.85),
+    inset 0 -40px 60px rgba(0, 0, 0, 0.6);
+  backface-visibility: hidden;
+  /* 最初はゆっくり重く、途中から勢いよく開く */
+  transition: transform var(--open-ms) cubic-bezier(0.7, 0, 0.35, 1);
+}
+.boss-gate__door--left {
+  left: 0;
+  transform-origin: left center;
+  border-right: 3px solid #0d0b0f;
+}
+.boss-gate__door--right {
+  right: 0;
+  transform-origin: right center;
+  border-left: 3px solid #0d0b0f;
+}
+.boss-gate.is-open .boss-gate__door--left {
+  transform: rotateY(84deg);
+}
+.boss-gate.is-open .boss-gate__door--right {
+  transform: rotateY(-84deg);
+}
+
+/* 扉の取っ手（鉄の輪） */
+.boss-gate__ring {
+  position: absolute;
+  top: 70%;
+  width: 40px;
+  height: 40px;
+  border: 7px solid #9c8f78;
+  border-radius: 50%;
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.9),
+    inset 0 2px 3px rgba(0, 0, 0, 0.6);
+}
+.boss-gate__door--left .boss-gate__ring {
+  right: 14px;
+}
+.boss-gate__door--right .boss-gate__ring {
+  left: 14px;
+}
+
+/* 石の枠（上と左右）。扉が開いても残り、闇と一緒に消える */
+.boss-gate__frame {
+  position: absolute;
+  inset: 0;
+  border: 14px solid #2e2a33;
+  border-bottom: none;
+  box-shadow:
+    inset 0 0 0 3px #16141a,
+    inset 0 0 30px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.boss-gate__caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12%;
+  margin: 0;
+  text-align: center;
+  /* ドット風の文字。フォントは index.html で「ラスボスがあらわれた！」の文字だけ読み込む */
+  font-family: 'DotGothic16', monospace;
+  font-size: min(30px, 6.8vw); /* 狭い画面でもはみ出さないよう、画面幅に合わせて縮める */
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: #fff4c2;
+  /* ぼかさず 1 段ずつずらした影で、レトロゲームのような縁取りにする */
+  text-shadow:
+    3px 0 0 #3b0764, -3px 0 0 #3b0764, 0 3px 0 #3b0764, 0 -3px 0 #3b0764,
+    3px 3px 0 #3b0764, -3px 3px 0 #3b0764, 3px -3px 0 #3b0764, -3px -3px 0 #3b0764,
+    6px 6px 0 #a855f7;
+  -webkit-font-smoothing: none;
+  image-rendering: pixelated;
+  opacity: 0;
+}
+/* 大きく出て落ち着き、しばらく見せてから消える（BossGate.jsx の caption → done の時間） */
+.boss-gate.is-caption .boss-gate__caption {
+  animation: boss-gate-caption 1.8s ease-out both;
+}
+@keyframes boss-gate-caption {
+  0% { opacity: 0; transform: scale(1.4); }
+  18% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* 動きを減らす設定の端末では、揺れを止める */
+@media (prefers-reduced-motion: reduce) {
+  .boss-gate--rumble .boss-gate__stage,
+  .boss-gate--open .boss-gate__stage {
+    animation: none;
+  }
+}

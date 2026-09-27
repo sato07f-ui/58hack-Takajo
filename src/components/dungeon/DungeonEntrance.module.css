@@ -1,0 +1,236 @@
+/* ダンジョンの入口：AR 画面の上に全面で重ねる。開き終わったら透明になって AR 画面が現れる */
+.overlay {
+  --gold: #ffd36b;
+  --wood: #6b4423;
+  --wood-dark: #4a2d15;
+  --iron: #2f2f38;
+  position: fixed;
+  inset: 0;
+  z-index: 20; /* .ui-layer（10）より手前 */
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-family: sans-serif;
+  color: #fff;
+  background: radial-gradient(ellipse at 50% 45%, #2b2140 0%, #120c1c 60%, #07050b 100%);
+  user-select: none;
+}
+
+/* 扉の奥から漏れる光。閉じている間は中央の隙間だけ、開くと画面全体に広がる */
+.light {
+  position: absolute;
+  /* 扉の枠（.doorway）と同じ高さにして、アーチの上にはみ出さないようにする */
+  top: calc(50% - min(35dvh, 260px) + 40px);
+  bottom: calc(50% - min(35dvh, 260px));
+  left: 50%;
+  width: 6px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: var(--gold);
+  box-shadow:
+    0 0 18px 6px rgba(255, 211, 107, 0.7),
+    0 0 60px 20px rgba(255, 170, 60, 0.35);
+  animation: seam-pulse 1.6s ease-in-out infinite;
+}
+
+/* 扉 2 枚を並べる枠（石のアーチ） */
+.doorway {
+  position: relative;
+  width: min(78vw, 360px);
+  height: min(70dvh, 520px);
+  display: flex;
+  border: 10px solid #3a3346;
+  border-bottom: none;
+  border-radius: 50% 50% 0 0 / 22% 22% 0 0;
+  box-shadow:
+    0 0 0 4px #1d1826,
+    0 20px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden; /* 扉をアーチの形に切り抜く */
+  perspective: 900px; /* 扉が奥へ回転して開くように見せる（子の .door に効く） */
+}
+
+/* 木の扉：縦板 + 鉄の帯 2 本 */
+.door {
+  flex: 1;
+  background:
+    linear-gradient(
+      transparent 20%,
+      var(--iron) 20% 24%,
+      transparent 24% 76%,
+      var(--iron) 76% 80%,
+      transparent 80%
+    ),
+    repeating-linear-gradient(90deg, var(--wood) 0 26px, var(--wood-dark) 26px 29px);
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.55);
+  transition: transform 1s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* 扉の取っ手（金の輪） */
+.door::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border: 4px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255, 211, 107, 0.6);
+}
+
+/* 蝶番側を軸にして、奥（ダンジョンの中）へ開く */
+.left {
+  position: relative;
+  transform-origin: left center;
+  border-right: 2px solid #22140a;
+}
+.left::after {
+  right: 10px;
+}
+
+.right {
+  position: relative;
+  transform-origin: right center;
+  border-left: 2px solid #22140a;
+}
+.right::after {
+  left: 10px;
+}
+
+/* 入口の両脇のたいまつ（炎だけを描く） */
+.torch {
+  position: absolute;
+  top: calc(50% - min(35dvh, 260px) + 12%);
+  width: 18px;
+  height: 30px;
+  border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
+  background: radial-gradient(ellipse at 50% 70%, #fff6c8 0%, #ffc34d 35%, #ff6a1a 70%, transparent 72%);
+  box-shadow: 0 0 30px 12px rgba(255, 140, 40, 0.35);
+  animation: flicker 0.9s ease-in-out infinite alternate;
+}
+.torchLeft {
+  left: calc(50% - min(39vw, 180px) - 34px);
+}
+.torchRight {
+  right: calc(50% - min(39vw, 180px) - 34px);
+  animation-delay: -0.45s;
+}
+
+.caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(6dvh, 24px);
+  padding: 0 16px;
+  text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+  transition: opacity 0.3s ease;
+}
+.title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  color: var(--gold);
+}
+.status {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+}
+.hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+/* 「…」を 1 つずつ増やす */
+.dots::after {
+  content: '';
+  display: inline-block;
+  width: 1.5em;
+  text-align: left;
+  animation: dots 1.2s steps(4, end) infinite;
+}
+
+/* ===== 開くとき ===== */
+.opening .left {
+  transform: rotateY(88deg);
+}
+.opening .right {
+  transform: rotateY(-88deg);
+}
+.opening .light {
+  animation: light-burst 1s ease-out forwards;
+}
+.opening .caption {
+  opacity: 0;
+  transition-delay: 0.4s;
+}
+/* 扉が開ききる頃に全体を透明にして、後ろの AR 画面を見せる */
+.opening {
+  opacity: 0;
+  transition: opacity 0.35s ease 0.95s;
+}
+
+@keyframes seam-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes light-burst {
+  0% {
+    width: 6px;
+    opacity: 1;
+  }
+  100% {
+    width: 140vw;
+    opacity: 0.9;
+  }
+}
+
+@keyframes flicker {
+  0% {
+    transform: scale(1, 1) rotate(-2deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(0.9, 1.12) rotate(3deg);
+    opacity: 1;
+  }
+}
+
+@keyframes dots {
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+}
+
+/* 動きを減らす設定の端末では、扉は動かさずにフェードだけにする */
+@media (prefers-reduced-motion: reduce) {
+  .light,
+  .torch,
+  .dots::after {
+    animation: none;
+  }
+  .opening .left,
+  .opening .right {
+    transform: none;
+  }
+  .opening .light {
+    animation: none;
+  }
+}

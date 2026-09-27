@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "画像トリガー AR データフロー",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1080,
+      540
+    ]
+  },
+  "stages": [
+    {
+      "label": "入力"
+    },
+    {
+      "label": "画像認識"
+    },
+    {
+      "label": "座標変換"
+    },
+    {
+      "label": "敵の配置"
+    },
+    {
+      "label": "描画"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "camera",
+      "type": "frontend",
+      "label": "useCamera",
+      "sublabel": "背面カメラ映像",
+      "stage": 0,
+      "row": 1,
+      "tag": "getUserMedia",
+      "width": 140
+    },
+    {
+      "id": "orientation",
+      "type": "frontend",
+      "label": "useDeviceOrientation",
+      "sublabel": "向きセンサー",
+      "stage": 0,
+      "row": 2,
+      "tag": "sensor",
+      "width": 140
+    },
+    {
+      "id": "targets",
+      "type": "database",
+      "label": "targets.mind",
+      "sublabel": "認識画像データ",
+      "stage": 1,
+      "row": 0,
+      "tag": "asset",
+      "width": 140
+    },
+    {
+      "id": "tracker",
+      "type": "backend",
+      "label": "createImageTracker",
+      "sublabel": "MindAR Controller",
+      "stage": 1,
+      "row": 1,
+      "tag": "worker",
+      "width": 140
+    },
+    {
+      "id": "v2s",
+      "type": "backend",
+      "label": "videoToScreen",
+      "sublabel": "cover 補正",
+      "stage": 2,
+      "row": 1,
+      "tag": "pure JS",
+      "width": 140
+    },
+    {
+      "id": "enemies",
+      "type": "database",
+      "label": "ENEMIES 対応表",
+      "sublabel": "targetIndex→敵",
+      "stage": 3,
+      "row": 0,
+      "tag": "config",
+      "width": 140
+    },
+    {
+      "id": "spawn",
+      "type": "backend",
+      "label": "createScene.spawnEnemy",
+      "sublabel": "レイ上 2m に配置",
+      "stage": 3,
+      "row": 1,
+      "tag": "Three.js",
+      "width": 140
+    },
+    {
+      "id": "models",
+      "type": "database",
+      "label": "loadEnemyModel",
+      "sublabel": "glb 読み込み",
+      "stage": 3,
+      "row": 2,
+      "tag": "cache",
+      "width": 140
+    },
+    {
+      "id": "canvas",
+      "type": "frontend",
+      "label": "AR canvas",
+      "sublabel": "向き追従で固定",
+      "stage": 4,
+      "row": 1,
+      "tag": "WebGL",
+      "width": 140
+    }
+  ],
+  "flows": [
+    {
+      "id": "video-frames",
+      "from": "camera",
+      "to": "tracker",
+      "label": "processVideo(video)",
+      "classification": "毎フレーム",
+      "variant": "emphasis",
+      "labelDy": 56
+    },
+    {
+      "id": "load-targets",
+      "from": "targets",
+      "to": "tracker",
+      "label": "addImageTargets",
+      "classification": "起動時 1 回",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "marker-center",
+      "from": "tracker",
+      "to": "v2s",
+      "label": "画像中心の映像座標",
+      "classification": "onUpdate worldMatrix",
+      "variant": "emphasis",
+      "labelDy": 56
+    },
+    {
+      "id": "screen-point",
+      "from": "v2s",
+      "to": "spawn",
+      "label": "画面座標 + targetIndex",
+      "classification": "検出時",
+      "variant": "emphasis",
+      "labelDy": 56
+    },
+    {
+      "id": "enemy-def",
+      "from": "enemies",
+      "to": "spawn",
+      "label": "敵の名前・モデル・サイズ",
+      "classification": "lookup",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "glb",
+      "from": "models",
+      "to": "spawn",
+      "label": "glTF scene",
+      "classification": "async",
+      "variant": "dashed",
+      "labelDy": -8
+    },
+    {
+      "id": "render",
+      "from": "spawn",
+      "to": "canvas",
+      "label": "scene に追加して描画",
+      "classification": "requestAnimationFrame",
+      "variant": "emphasis",
+      "labelDy": 56
+    },
+    {
+      "id": "orient",
+      "from": "orientation",
+      "to": "canvas",
+      "label": "camera.quaternion 更新",
+      "classification": "毎フレーム",
+      "variant": "default",
+      "route": "bottom-channel",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "メインパス",
+      "items": [
+        "カメラ映像を MindAR Controller に流し、登録画像を検出する",
+        "画像中心の映像座標を cover 補正して画面座標に直す",
+        "画面座標からのレイ上 2m に敵の glb を置き、以後は向き追従で固定"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "設計上のポイント",
+      "items": [
+        "MindARThree は使わず、認識エンジン部分だけを既存の <video> に接続する",
+        "MindAR の姿勢はそのまま使わず、画面上の点だけをトリガーとして利用する",
+        "認識と 3D は React 非依存の純粋 JS に分け、hook はつなぐだけ"
+      ]
+    }
+  ]
+}
