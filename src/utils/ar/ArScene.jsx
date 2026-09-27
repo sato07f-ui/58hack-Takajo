@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCamera } from './useCamera'
 import { createScene, applyDeviceOrientation } from './createScene'
 import { useImageTrigger } from '../imageTrigger/useImageTrigger'
 import { useObjectTrigger } from '../objectTrigger/useObjectTrigger'
 import { videoToScreen } from '../imageTrigger/videoToScreen'
 import { ENEMIES } from '../enemy/enemies'
+import { TUTORIAL_SPAWN_SCREEN_Y } from '../tutorial/tutorialRule'
 
 // 画像認識で出現する敵（.mind があるもの）と、その .mind の一覧。
 // 認識結果の targetIndex は SCAN_TARGETS の添字になる
@@ -16,6 +17,9 @@ const BANANA = ENEMIES.find((enemy) => enemy.id === 'banana')
 
 // 親の呼び出しで出現するラスボス
 const BOSS = ENEMIES.find((enemy) => enemy.id === 'boss')
+
+// 最初の入場で、認識の準備中に必ず出るチュートリアルの敵
+const TUTORIAL = ENEMIES.find((enemy) => enemy.tutorial)
 
 /**
  * props.orientationRef: useDeviceOrientation() の orientationRef
@@ -33,8 +37,25 @@ const BOSS = ENEMIES.find((enemy) => enemy.id === 'boss')
  *   'reveal': 扉が消えた。スポットライトを点け、ラスボスを闇から浮かび上がらせる
  *   'fight': 演出が終わった。ラスボス戦を始める（onEnemySpawn / onBossAppear を呼ぶ）
  * props.onBossAppear(model): ラスボス戦が始まるときに呼ばれる（任意）
+ * props.tutorial: true なら、カメラが映った時点でチュートリアルの敵を出し、画像認識・物体認識は準備だけして探し始めない
+ *   （任意。マウント時の値だけが効く。docs/OFFLINE_TUTORIAL_PLAN.md）
+ * props.holdScan: true の間は、アイテムを拾っても次の敵を探し始めない。false に戻ったときに探し始める
+ *   （任意。チュートリアルの後の扉の演出が終わるまで待たせる用）
+ * props.onSceneReady(): カメラが映り、チュートリアルの敵を出し終わったときに 1 回呼ばれる（任意）。
+ *   tutorial が false ならカメラが映った時点。カメラが使えなかったとき・チュートリアルの敵を出せなかったときも呼ぶ
  */
-export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect, onReady, bossPhase = 'none', onBossAppear }) {
+export function ArScene({
+  orientationRef,
+  sceneRef,
+  onEnemySpawn,
+  onItemCollect,
+  onReady,
+  bossPhase = 'none',
+  onBossAppear,
+  tutorial = false,
+  holdScan = false,
+  onSceneReady,
+}) {
   const { videoRef, status, error } = useCamera(true)
   const canvasRef = useRef(null)
   const localSceneRef = useRef(null) // 親が sceneRef を渡さなくても内部で使う
@@ -43,6 +64,11 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect,
   // createScene は最初に 1 回だけ作るので、アイテムを拾ったときの処理は ref 経由で最新のものを呼ぶ
   const itemCollectRef = useRef(null)
   const onReadyRef = useRef(onReady)
+  const onSceneReadyRef = useRef(onSceneReady)
+  const [tutorialAtMount] = useState(tutorial) // マウント時の値だけを使う
+  const tutorialSpawnedRef = useRef(false) // チュートリアルの敵は 1 回だけ出す
+  const holdScanRef = useRef(holdScan)
+  const pendingRescanRef = useRef(false) // holdScan 中にアイテムを拾った（holdScan が外れたら探し始める）
   const bossSpawnedRef = useRef(false) // ラスボスは 1 回だけ出す
   // ラスボスの読み込みは非同期なので、読み込み中に段階が進んでも追いつけるよう最新の状態を持っておく
   const bossRef = useRef({ phase: 'none', model: null, announced: false })
@@ -93,6 +119,7 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect,
   } = useImageTrigger(videoRef, {
     enabled: status === 'ready', // カメラ映像が流れ始めてから認識を開始
     targetUrls: TARGET_URLS,
+    startPaused: tutorialAtMount, // チュートリアル中は準備だけ進める
     onDetect: ({ targetIndex, videoX, videoY }) => handleEnemyFound(SCAN_TARGETS[targetIndex], videoX, videoY),
   })
 
@@ -102,16 +129,22 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect,
     targetClass: BANANA.detectClass,
     minScore: 0.6,
     intervalMs: 500,
+    startPaused: tutorialAtMount,
     onDetect: ({ videoX, videoY }) => handleEnemyFound(BANANA, videoX, videoY),
   })
 
   /**
    * 敵が落としたアイテムを拾ったら、親に通知して次の敵を探し始める。
    * （アイテムを拾うまでは探さないので、倒した直後に次の敵が重なって出ることはない）
+   * holdScan 中（チュートリアルの後の扉の演出の間）は、holdScan が外れるまで探し始めない
    */
   const handleItemCollect = (item) => {
     onItemCollect?.(item)
     if (bossRef.current.phase !== 'none') return // ラスボスが呼ばれた後は普通の敵を探さない
+    if (holdScanRef.current) {
+      pendingRescanRef.current = true
+      return
+    }
     foundRef.current = false
     rescanImage()
     rescanObject()
@@ -120,7 +153,55 @@ export function ArScene({ orientationRef, sceneRef, onEnemySpawn, onItemCollect,
   useEffect(() => {
     itemCollectRef.current = handleItemCollect
     onReadyRef.current = onReady
+    onSceneReadyRef.current = onSceneReady
+    holdScanRef.current = holdScan
   })
+
+  // holdScan が外れたら、待たせていた敵探しを始める（扉の演出中にラスボスが呼ばれていたら探さない）
+  useEffect(() => {
+    if (holdScan || !pendingRescanRef.current || bossRef.current.phase !== 'none') return
+    pendingRescanRef.current = false
+    foundRef.current = false
+    rescanImage()
+    rescanObject()
+  }, [holdScan, rescanImage, rescanObject])
+
+  // カメラが映ったら、チュートリアルの敵を認識なしで出す（認識の準備はその裏で進む）
+  useEffect(() => {
+    if (status === 'error') {
+      onSceneReadyRef.current?.() // エラーを見せるために呼ぶ
+      return
+    }
+    if (status !== 'ready' || tutorialSpawnedRef.current) return
+    tutorialSpawnedRef.current = true
+    // チュートリアルなし、または入る前にラスボスが呼ばれていた
+    if (!tutorialAtMount || bossRef.current.phase !== 'none') {
+      onSceneReadyRef.current?.()
+      return
+    }
+    const scene = localSceneRef.current
+    if (!scene) return
+    foundRef.current = true // 認識の敵と重ならないようにする
+    const x = window.innerWidth / 2
+    const y = window.innerHeight * TUTORIAL_SPAWN_SCREEN_Y
+    scene
+      .spawnEnemy(TUTORIAL, x, y)
+      .then((model) => {
+        if (!model) return // 読み込み中に画面が閉じられた
+        // 読み込み中にラスボスが呼ばれたら、ラスボスの演出に任せる（clearEnemy() でにんじんは消える）
+        if (bossRef.current.phase === 'none') callbacksRef.current.onEnemySpawn?.(TUTORIAL)
+        onSceneReadyRef.current?.()
+      })
+      .catch(() => {
+        // glb を読み込めなかった: チュートリアルをあきらめて普通の敵探しに切り替える
+        if (bossRef.current.phase === 'none') {
+          foundRef.current = false
+          rescanImage()
+          rescanObject()
+        }
+        onSceneReadyRef.current?.()
+      })
+  }, [status, tutorialAtMount, rescanImage, rescanObject])
 
   // 画像認識は準備中 'idle'、物体認識は準備中 'idle' / 'loading'。どちらも抜けたら準備完了
   const ready =
