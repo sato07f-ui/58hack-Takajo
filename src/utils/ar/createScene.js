@@ -1,10 +1,12 @@
 import * as THREE from 'three'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { loadEnemyModel } from '../enemy/loadEnemyModel'
 import { loadModel } from '../item/loadModel'
 import { findItem } from '../item/items'
 import { createHitEffect, updateHitEffects } from './hitEffect'
 import { createHpBar } from './hpBar'
 import { ENEMY_FOLLOW } from './enemyFollow'
+import { createBossSpotlight } from './bossSpotlight'
 import { perfStart } from '../debug/perfLog' // [perf]
 
 const _zee = new THREE.Vector3(0, 0, 1)
@@ -13,6 +15,8 @@ const _q0 = new THREE.Quaternion()
 const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)) // X 軸 -90° 補正
 const DEG = Math.PI / 180
 
+const FACE_TILT = 1.0 // fixed の敵をカメラの方へ傾ける割合（0: まっすぐ立つ, 1: 顔がカメラを真正面に見る）
+const MAX_FACE_TILT_DEG = 60 // 傾ける角度の上限（真上・真下から見たときに倒れすぎないように）
 const DAMAGE_FLASH_MS = 150 // ダメージ演出で白く光る時間
 const DAMAGE_SQUASH_MS = 100 // ダメージ演出で潰れている時間
 const DEFEAT_MIN_SCALE = 0.05 // 撃破演出でこの倍率まで縮んだら消す
@@ -41,6 +45,7 @@ const _followTarget = new THREE.Vector3() // 追従先（敵の中心を置き�
 const _prevAnchor = new THREE.Vector3()
 const _screenCenterDir = new THREE.Vector3(0, 0, -1) // カメラローカルの画面中央方向
 const _lineStart = new THREE.Vector3(0, -0.08, -0.15) // 追従線の始点（カメラローカル：手元のやや下）
+const _toCamera = new THREE.Vector3()
 const _white = new THREE.Color(0xffffff)
 const _black = new THREE.Color(0x000000)
 
@@ -75,14 +80,20 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   camera.position.set(0, 0, 0) //カメラの座標を原点固定（後で変更可能）
 
   // 照明: 全体を底上げする環境光 + 空/地面の色味 + カメラ側から当てる光
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8))
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x999999, 1.2))
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8)
+  const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x999999, 1.2)
+  scene.add(ambientLight, hemisphereLight)
   // カメラの子にして、端末をどちらに向けても敵の正面（プレイヤー側）が明るくなるようにする
   const frontLight = new THREE.DirectionalLight(0xffffff, 1.6)
   frontLight.position.set(0.5, 1, 0) // カメラから見て右上
   frontLight.target.position.set(0, 0, -1) // カメラの正面方向を照らす
   camera.add(frontLight, frontLight.target)
   scene.add(camera) // カメラの子の光を描画に含めるため
+
+  // 金属の映り込み用の環境（部屋の照明を模したもの）。enemy.envMapIntensity を持つ敵にだけ当てる
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  pmrem.dispose()
 
   let enemyModel = null // 出ている敵のモデル（同時に出るのは 1 体だけ）
   // 手元から敵の中心までの線（位置の調整用。ENEMY_FOLLOW.showLine で表示を切り替える）
@@ -103,6 +114,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   let isDefeated = false // 撃破演出中（縮んで消える途中）なら true
   let hasDropped = false // 今の敵のドロップ処理を済ませたら true
   let defeatDropId = null // 撃破した敵が落とすアイテムの id（playDefeatEffect で決まる）
+  let spotlight = null // ラスボスのスポットライト演出（出ている間だけ）
 
   /** モデルの中心（ワールド座標）を out に入れて返す */
   const centerOf = (model, out) => _box.setFromObject(model).getCenter(out)
@@ -110,12 +122,18 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   /**
    * 読み込んだモデルを AR 空間に置ける状態にする（敵・アイテム共通）。
    * マテリアルを個体ごとに複製し、表示サイズを height [m] に揃え、
-   * 演出で scale を戻すときの基準 baseScale を記録する
+   * 演出で scale を戻すときの基準 baseScale を記録する。
+   * envMapIntensity を渡すと映り込みの環境を当てる（暗くなりやすい黒い体・金属の金を明るく見せる）
    */
-  const prepareModel = (model, height) => {
+  const prepareModel = (model, height, envMapIntensity) => {
     // clone() はマテリアルを共有するので、この個体だけ色を変えられるよう複製する
     model.traverse((obj) => {
-      if (obj.material) obj.material = obj.material.clone()
+      if (!obj.material) return
+      obj.material = obj.material.clone()
+      if (envMapIntensity) {
+        obj.material.envMap = envMap
+        obj.material.envMapIntensity = envMapIntensity
+      }
     })
     _box.setFromObject(model).getSize(_size)
     model.scale.setScalar(height / _size.y)
@@ -161,6 +179,22 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     model.position.add(_prevAnchor.sub(anchor).negate())
   }
 
+  /**
+   * fixed の敵（ラスボス）の向きを出現時に 1 回だけ決める。顔（+Z）を水平にカメラへ向け、
+   * カメラを見上げる（見下ろす）角度だけ体を後ろ（前）に傾ける。体は世界の上方向を基準に立つので、スポットライトの光の筋とずれない
+   */
+  const faceCameraUpright = (model) => {
+    const { anchor, enemy } = model.userData
+    model.position.copy(anchor)
+    model.lookAt(camera.position.x, anchor.y, camera.position.z)
+    _toCamera.subVectors(camera.position, anchor)
+    const pitch = Math.atan2(_toCamera.y, Math.hypot(_toCamera.x, _toCamera.z)) // カメラが上にあると正
+    const maxTilt = MAX_FACE_TILT_DEG * DEG
+    model.rotateX(-THREE.MathUtils.clamp(pitch * FACE_TILT, -maxTilt, maxTilt))
+    // 原点が足元なので、体の中心が anchor に来るよう、傾けた体の上方向に半分ずらす
+    model.position.addScaledVector(_modelUp.copy(_up).applyQuaternion(model.quaternion), -enemy.height / 2)
+  }
+
   /** 追従線（手元 → 敵の中心）を今の位置に合わせる。ENEMY_FOLLOW.showLine が false か敵がいなければ隠す */
   const updateFollowLine = () => {
     followLine.visible = Boolean(ENEMY_FOLLOW.showLine && enemyModel?.visible)
@@ -174,8 +208,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
   }
 
   /**
-   * 画面上の点 (screenX, screenY) の方向、カメラから ENEMY_FOLLOW.distance 先に敵を出す。
-   * 以降はカメラに追従し、画面の同じ位置に居続ける（followCamera）。
+   * 画面上の点 (screenX, screenY) の方向、カメラから ENEMY_FOLLOW.distance（enemy.spawnDistance があればその距離）先に敵を出す。
+   * 以降はカメラに追従し、画面の同じ位置に居続ける（followCamera）。enemy.fixed の敵は出た位置に留まる。
    * 既に敵が出ていれば先に消してから出す。
    * enemy: ENEMIES の要素
    */
@@ -184,7 +218,9 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     _ndc.set((screenX / window.innerWidth) * 2 - 1, -(screenY / window.innerHeight) * 2 + 1)
     camera.updateMatrixWorld()
     _raycaster.setFromCamera(_ndc, camera)
-    const center = _raycaster.ray.at(ENEMY_FOLLOW.distance, new THREE.Vector3())
+    const center = _raycaster.ray.at(enemy.spawnDistance ?? ENEMY_FOLLOW.distance, new THREE.Vector3())
+    // spawnLift [m] だけ真上に持ち上げる。カメラより高い位置に出た fixed の敵は、こちらを見下ろす姿勢になる
+    center.y += enemy.spawnLift ?? 0
     // 追従用に、レイの向きをカメラローカルで覚えておく（画面上のどこに出たか）
     const localDir = _raycaster.ray.direction.clone().applyQuaternion(camera.quaternion.clone().invert())
 
@@ -192,13 +228,15 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     const model = await loadEnemyModel(enemy.modelUrl)
     endLoad() // [perf]
     if (!running) return null // 読み込み中に dispose された
-    prepareModel(model, enemy.height)
+    prepareModel(model, enemy.height, enemy.envMapIntensity)
 
-    // モデルの中心をレイ上の点に置き、顔をカメラに向ける（以降も毎フレーム追従して向け直す）
+    // モデルの中心をレイ上の点に置き、顔をカメラに向ける（fixed でなければ以降も毎フレーム追従して向け直す）
     model.userData.enemy = enemy
     model.userData.anchor = center
+    model.userData.center = center // 体の中心（bossSpotlight.js が光を当てる位置）
     model.userData.localDir = localDir
-    faceCamera(model)
+    if (enemy.fixed) faceCameraUpright(model)
+    else faceCamera(model)
     // HP ゲージは敵の子にすると変形・回転に巻き込まれるので scene に直接置き、毎フレーム頭上に合わせる
     model.userData.hpBar = createHpBar()
     clearEnemy() // 前の敵が残っていれば入れ替える
@@ -263,10 +301,26 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     return model
   }
 
-  /** 出ている敵を消す（いなければ何もしない）。HP ゲージ・ドロップ・魔法弾も一緒に消す */
+  /**
+   * 周りを暗くし、model（ラスボス）を闇に包む。revealSpotlight() でスポットライトを当てる。
+   * 敵が消えると元に戻る
+   */
+  const startSpotlight = (model) => {
+    spotlight?.dispose()
+    spotlight = createBossSpotlight(scene, model, [ambientLight, hemisphereLight, frontLight], camera)
+  }
+
+  /** スポットライト演出を消して元の明るさに戻す（出ていなければ何もしない） */
+  const clearSpotlight = () => {
+    spotlight?.dispose()
+    spotlight = null
+  }
+
+  /** 出ている敵を消す（いなければ何もしない）。HP ゲージ・ドロップ・魔法弾・スポットライトも一緒に消す */
   const clearEnemy = () => {
     clearDrop()
     clearProjectiles()
+    clearSpotlight()
     if (enemyModel) {
       scene.remove(enemyModel)
       enemyModel.userData.hpBar?.dispose()
@@ -390,6 +444,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
       } else {
         enemyModel.visible = false
         enemyModel.userData.hpBar.group.visible = false
+        clearSpotlight() // ラスボスを倒したら周りを元の明るさに戻す
         // 敵が消えた直後に 1 回だけドロップを出す
         if (!hasDropped) {
           hasDropped = true
@@ -417,8 +472,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     }
 
     // 3. 敵をカメラに追従させ、正面をカメラに向け続ける（撃破演出中は回転させたいので向きは変えない）。
-    //    onFrame でカメラの向きが変わった後に呼ぶ
-    if (enemyModel) {
+    //    onFrame でカメラの向きが変わった後に呼ぶ。fixed の敵（ラスボス）は出た位置・向きのまま
+    if (enemyModel && !enemyModel.userData.enemy.fixed) {
       followCamera(enemyModel)
       if (!isDefeated) faceCamera(enemyModel)
     }
@@ -427,6 +482,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     // 4. HP ゲージを頭上に追従させ、hitEffect.js のリング・粒子を進める
     updateHpBar()
     updateHitEffects()
+    spotlight?.update()
 
     // 5. ドロップの演出：しばらく足元で回り、その後プレイヤーの手元へ吸い寄せられて消える
     if (dropModel) {
@@ -456,6 +512,8 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
     renderer,
     spawnEnemy,
     clearEnemy,
+    startSpotlight,
+    revealSpotlight: () => spotlight?.reveal(),
     spawnDrop,
     clearDrop,
     collectDrop,
@@ -472,6 +530,7 @@ export const createScene = (canvas, { onFrame, onItemCollect } = {}) => {
       clearEnemy()
       followLine.geometry.dispose()
       followLine.material.dispose()
+      envMap.dispose()
       renderer.dispose()
     },
   }

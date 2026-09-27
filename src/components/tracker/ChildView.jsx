@@ -5,6 +5,7 @@ import { useGeolocation } from '../../utils/tracker/useGeolocation'
 import { useLocationChannel } from '../../utils/tracker/useLocationChannel'
 import { useEscapeState } from '../../utils/tracker/useEscapeState'
 import { useWakeLock } from '../../utils/tracker/useWakeLock'
+import { useBossSummonReceiver } from '../../utils/tracker/useBossSummon'
 import { isValidRoomCode, normalizeRoomCode } from '../../utils/tracker/roomCode'
 import { isDevRoomCode } from '../../utils/tracker/devRoomCode'
 import { distanceLevel, formatDistance } from '../../utils/tracker/distanceLevel'
@@ -14,6 +15,18 @@ import { LocationPermissionHint } from './LocationPermissionHint'
 import { EscapedScreen, RevivedBanner } from './EscapedScreen'
 import { BattleHud } from '../battle/BattleHud'
 import { DungeonEntrance } from '../dungeon/DungeonEntrance'
+import { BossGate } from '../boss/BossGate'
+
+// 扉の演出の段階 → ラスボスの段階（ArScene の bossPhase）
+const BOSS_PHASE_BY_GATE_STEP = {
+  appear: 'gate',
+  rumble: 'gate',
+  open: 'appear', // 扉が開き始めたら、隠れているうちに闇の中へラスボスを出す
+  fade: 'appear',
+  light: 'reveal', // 扉が消えたらスポットライトを点ける
+  caption: 'reveal',
+  done: 'fight',
+}
 
 /**
  * 子供の画面。親の横でコードを入力して接続し、以後はコードを表示しない。
@@ -39,6 +52,13 @@ export function ChildView({ onBack, ar }) {
   const wakeLock = useWakeLock()
   const escaped = escape.state === 'escaped'
   const battle = useBattle({ disabled: escaped })
+  const boss = useBossSummonReceiver({ channel, roomCode })
+  const [gateStep, setGateStep] = useState('appear') // 扉の演出の段階（BossGate の TIMELINE）
+  // ラスボスの段階（ArScene の bossPhase）。ダンジョンに入る前に呼ばれた場合は、入った瞬間に扉の演出を始める
+  const bossPhase = !boss.summoned || !inDungeon ? 'none' : BOSS_PHASE_BY_GATE_STEP[gateStep]
+
+  /** ラスボスが出現した（HP の初期化などは onEnemySpawn → battle.handleEnemySpawn で済む。ラスボス固有の処理はここにつなぐ） */
+  function handleBossAppear() {}
 
   // 自分の位置が更新されたら親に送る
   useEffect(() => {
@@ -109,6 +129,8 @@ export function ChildView({ onBack, ar }) {
           onEnemySpawn={battle.handleEnemySpawn}
           onItemCollect={battle.handleItemCollect}
           onReady={() => setArReady(true)}
+          bossPhase={bossPhase}
+          onBossAppear={handleBossAppear}
         />
         <div className="ui-layer">
           <BattleHud battle={battle} disabled={escaped} />
@@ -117,6 +139,7 @@ export function ChildView({ onBack, ar }) {
           </div>
           {escaped && <EscapedScreen distance={escape.distance} reason={escape.reason} />}
           {escape.justRevived && <RevivedBanner />}
+          {bossPhase !== 'none' && gateStep !== 'done' && <BossGate onStep={setGateStep} />}
         </div>
         {entering && <DungeonEntrance ready={arReady} onDone={() => setEntering(false)} />}
       </>
@@ -132,6 +155,7 @@ export function ChildView({ onBack, ar }) {
         <>
           <DistanceDisplay me={geo.position} peer={channel.peerLocation} />
           <ConnectionStatus {...channel} peerLabel="親" />
+          {boss.summoned && <p className="boss-summoned-note">ラスボスがダンジョンで待っている！</p>}
           <LocationPermissionHint permission={geo.permission} error={geo.error} />
         </>
       )}
